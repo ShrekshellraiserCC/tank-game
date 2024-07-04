@@ -1,4 +1,4 @@
-local pixelbox                = {}
+local pixelbox                = { initialized = false }
 
 pixelbox.license              = [[MIT License
 
@@ -22,10 +22,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ]]
----@class BoxObject
----@field term Window
----@field canvas table
----@field background color
+
 local box_object              = {}
 
 local t_cat                   = table.concat
@@ -172,31 +169,35 @@ local function generate_lookups()
     end
 end
 
+function pixelbox.make_canvas(source_table)
+    local dummy_OOB = {}
+    return setmetatable(source_table or {}, {
+        __index = function()
+            return dummy_OOB
+        end
+    })
+end
+
+function pixelbox.setup_canvas(box, canvas_blank, color)
+    for y = 1, box.height do
+        if not rawget(canvas_blank, y) then rawset(canvas_blank, y, {}) end
+
+        for x = 1, box.width do
+            canvas_blank[y][x] = color
+        end
+    end
+
+    return canvas_blank
+end
+
 function pixelbox.restore(box, color, keep_existing)
     if not keep_existing then
-        local new_canvas = {}
-
-        for y = 1, box.height do
-            for x = 1, box.width do
-                if not new_canvas[y] then new_canvas[y] = {} end
-                new_canvas[y][x] = color
-            end
-        end
+        local new_canvas = pixelbox.setup_canvas(box, pixelbox.make_canvas(), color)
 
         box.canvas = new_canvas
         box.CANVAS = new_canvas
     else
-        local canvas = box.canvas
-
-        for y = 1, box.height do
-            for x = 1, box.width do
-                -- if not bc[y] then bc[y] = {} end -- not sure what this is supposed to do, but I've removed it so VSCode shuts up
-
-                if not canvas[y][x] then
-                    canvas[y][x] = color
-                end
-            end
-        end
+        pixelbox.setup_canvas(box, box.canvas, color)
     end
 end
 
@@ -281,22 +282,19 @@ function box_object:render()
     end
 end
 
----@param color color
 function box_object:clear(color)
-    pixelbox.restore(self, color)
+    pixelbox.restore(self, to_blit[color or ""] and color or self.background, true)
 end
 
----@param x integer
----@param y integer
----@param color color
 function box_object:set_pixel(x, y, color)
-    if not (self.canvas[y] and self.canvas[y][x]) then return end
     self.canvas[y][x] = color
 end
 
----@param w integer
----@param h integer
----@param color color
+function box_object:set_canvas(canvas)
+    self.canvas = canvas
+    self.CANVAS = canvas
+end
+
 function box_object:resize(w, h, color)
     self.term_width  = w
     self.term_height = h
@@ -306,15 +304,35 @@ function box_object:resize(w, h, color)
     pixelbox.restore(self, color or self.background, true)
 end
 
-local first_run = true
+function box_object:analyze_buffer()
+    local canvas = self.canvas
+    if not canvas then
+        error("Box missing canvas. Possible to regenerate with\n\npixelbox.restore(box,box.background)", 0)
+    end
 
----@param terminal Window
----@param bg color?
----@return BoxObject
+    for y = 1, self.height do
+        local row = canvas[y]
+        if not row then
+            error(("Box is missing a pixel row: %d"):format(y), 0)
+        end
+
+        for x = 1, self.width do
+            local pixel = row[x]
+            if not pixel then
+                error(("Box is missing a pixel at:\n\nx:%d y:%d"):format(x, y), 0)
+            elseif not to_blit[pixel] then
+                error(("Box has an invalid pixel at:\n\nx:%d y:%d. Value: %s"):format(x, y, pixel), 0)
+            end
+        end
+    end
+
+    return true
+end
+
 function pixelbox.new(terminal, bg)
     local box      = {}
 
-    box.background = bg or terminal.getBackgroundColor() or colors.black
+    box.background = bg or terminal.getBackgroundColor()
 
     local w, h     = terminal.getSize()
     box.term       = terminal
@@ -328,10 +346,10 @@ function pixelbox.new(terminal, bg)
 
     pixelbox.restore(box, box.background)
 
-    if first_run then
+    if not pixelbox.initialized then
         generate_lookups()
 
-        first_run = false
+        pixelbox.initialized = true
     end
 
     return box

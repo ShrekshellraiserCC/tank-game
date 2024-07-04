@@ -3,51 +3,75 @@ local shapes = require "shapes"
 local graphics = require "graphics"
 local trig = require "trig"
 
-win = window.create(term.current(), 1, 1, term.getSize())
+local win = window.create(term.current(), 1, 1, term.getSize())
 local box = pixelbox.new(win)
 graphics.setBox(box)
 
 local friction = 0.99
 
----@class Player
----@field angle number this is so dumb, WHY
----@field velocity number
----@field lastFireTime number
----@field fireDelay number
----@field shotCapacity number
----@field shotsRemaining number
----@field reloadDelay number
----@field lastReloadTime number
-local mainPlayer = {
-    pos = vector.new(30, 30, 0),
-    size = vector.new(4, 9, 0),
-    turretLength = 8,
-    turretSize = vector.new(5, 5, 0),
-    color = colors.red,
-    turretColor = colors.green,
-    angle = 0,
-    targetAngle = 0,
-    turretAngle = 0,
-    velocity = 0,
-    targetVelocity = 0,
-    boosting = false,
-    maxAcceleration = 0.1,
-    boostStats = {
-        maxVelocity = 2,
-        maxAngleVelocity = 128
-    },
-    baseStats = {
-        maxVelocity = 1,
-        maxAngleVelocity = 8,
-    },
-    lastFireTime = 0,
-    fireDelay = 1,
-    shotCapacity = 30,
-    shotsRemaining = 3,
-    reloadDelay = 1,
-    lastReloadTime = 0,
-    bulletVelocity = 3,
-}
+---@return Player
+local function newPlayer()
+    ---@class Player
+    ---@field angle number this is so dumb, WHY
+    ---@field velocity number
+    ---@field lastFireTime number
+    ---@field fireDelay number
+    ---@field shotCapacity number
+    ---@field shotsRemaining number
+    ---@field reloadDelay number
+    ---@field lastReloadTime number
+    ---@field id integer
+    ---@field targetAngle number
+    ---@field turretAngle number
+    ---@field boosting boolean
+    ---@field targetVelocity number
+    ---@field poly Polygon
+    local player = {
+        pos = vector.new(30, 30, 0),
+        size = vector.new(4, 9, 0),
+        turretLength = 8,
+        turretSize = vector.new(5, 5, 0),
+        color = colors.red,
+        turretColor = colors.green,
+        angle = 0,
+        targetAngle = 0,
+        turretAngle = 0,
+        velocity = 0,
+        targetVelocity = 0,
+        boosting = false,
+        maxAcceleration = 0.1,
+        boostStats = {
+            maxVelocity = 2,
+            maxAngleVelocity = 128
+        },
+        baseStats = {
+            maxVelocity = 1,
+            maxAngleVelocity = 8,
+        },
+        lastFireTime = 0,
+        fireDelay = 1,
+        shotCapacity = 30,
+        shotsRemaining = 3,
+        reloadDelay = 1,
+        lastReloadTime = 0,
+        bulletVelocity = 3,
+    }
+    player.poly = shapes.polygon(player.pos, shapes.getRectangleCorners(player.size.x, player.size.y), colors.red)
+    player.poly.texture = { data = { { player.color } }, w = 1, h = 1 }
+    player.poly.angle = player.angle
+    return player
+end
+
+local mainPlayer = newPlayer()
+
+---@type table<integer,Player>
+local players = {}
+
+players[1] = mainPlayer
+mainPlayer.id = 1
+
+players[2] = newPlayer()
+players[2].id = 2
 
 ---@class Bullet
 ---@field pos Vector
@@ -122,8 +146,8 @@ end
 ---@return number max
 local function projectPolygon(axis, poly)
     local pointsVectors = {}
-    for i, v in ipairs(poly.points) do
-        pointsVectors[i] = vector.new(v.x, v.y, 0)
+    for i, v in ipairs(poly.apoints) do
+        pointsVectors[i] = vector.new(v[1], v[2], 0)
     end
     local dotProduct = axis:dot(pointsVectors[1])
     local min, max = dotProduct, dotProduct
@@ -158,10 +182,10 @@ local function polygonCollision(polyA, polyB, velocity)
     local collisionNormal = vector.new(0, 0, 0)
 
     local function getEdge(poly, index)
-        local currentPoint = poly.points[index]
-        local nextPoint = poly.points[(index % #poly.points) + 1]
-        return vector.new(nextPoint.x - currentPoint.x, nextPoint.y - currentPoint.y, 0),
-            vector.new((nextPoint.y - currentPoint.y), -(nextPoint.x - currentPoint.x), 0)
+        local currentPoint = poly.apoints[index]
+        local nextPoint = poly.apoints[(index % #poly.apoints) + 1]
+        return vector.new(nextPoint[1] - currentPoint[1], nextPoint[2] - currentPoint[2], 0),
+            vector.new((nextPoint[2] - currentPoint[2]), -(nextPoint[1] - currentPoint[1]), 0)
     end
 
     for i = 1, edgeCountA + edgeCountB - 1 do
@@ -227,18 +251,23 @@ end
 
 ---- GAME LOGIC
 
+local testCircle
+
 local function createBounds(w, h)
     bounds = {}
-    bounds[#bounds + 1] = shapes.polygon(shapes.getRectanglePointsCorner(-2, -2, w + 5, 3), colors.white)
-    bounds[#bounds + 1] = shapes.polygon(shapes.getRectanglePointsCorner(-2, -2, 3, h + 5), colors.white)
-    bounds[#bounds + 1] = shapes.polygon(shapes.getRectanglePointsCorner(w, -2, 3, h + 5), colors.white)
-    bounds[#bounds + 1] = shapes.polygon(shapes.getRectanglePointsCorner(-2, h, w + 5, 3), colors.white)
+    local top = shapes.polygon(vector.new(-2, -2, 0), shapes.getRectanglePointsCorner(w + 5, 3), colors.white)
+    bounds[#bounds + 1] = top
+    local left = shapes.polygon(vector.new(-2, -2, 0), shapes.getRectanglePointsCorner(3, h + 5), colors.white)
+    bounds[#bounds + 1] = left
+    local bottom = shapes.polygon(vector.new(w, -2, 0), shapes.getRectanglePointsCorner(3, h + 5), colors.white)
+    bounds[#bounds + 1] = bottom
+    local right = shapes.polygon(vector.new(-2, h, 0), shapes.getRectanglePointsCorner(w + 5, 3), colors.white)
+    bounds[#bounds + 1] = right
 
-    bounds[#bounds + 1] = shapes.polygon(shapes.getRectangleCorners(tw, th * 3 / 2, 30, 30), colors.white)
-    -- bounds[#bounds + 1] = shapes.polygon(shapes.getCirclePoints(tw, th * 3 / 2, 15, 3), colors.white)
-    shapes.debug.logPolygon(bounds[#bounds])
-    bounds[#bounds].renderer = shapes.renderers.debugUV
-    bounds[#bounds].texture = shapes.loadTexture("test_pattern_16.tex")
+    -- local test = shapes.polygon(vector.new(tw, th * 3 / 2, 0), shapes.getRectangleCorners(30, 30), colors.red)
+    testCircle = shapes.polygon(vector.new(tw, th * 3 / 2, 0), shapes.getCirclePoints(15, 10), colors.red)
+    bounds[#bounds + 1] = testCircle
+    testCircle.texture = shapes.loadTexture("test.bimg")
     -- bounds[#bounds].renderer = shapes.wireFrameRender
 end
 createBounds(tw * 2, th * 3)
@@ -249,7 +278,7 @@ local function updateBullet(i)
     bullet.vel = bullet.vel * friction
     local translation = bullet.vel
 
-    local bulletPoly = shapes.polygon(shapes.getRectanglePointsCorner(bullet.pos.x, bullet.pos.y, 2, 2), colors.white)
+    local bulletPoly = shapes.polygon(bullet.pos, shapes.getRectanglePointsCorner(2, 2), colors.white)
 
     local collision0 = os.epoch(timeunit)
     for _, v in pairs(bounds) do
@@ -306,8 +335,10 @@ local function updatePlayer(player)
     translation.x = player.velocity * math.cos(math.rad(player.angle + 90))
     translation.y = player.velocity * math.sin(math.rad(player.angle + 90))
 
-    local playerPoly = shapes.polygon(shapes.getRectangleCorners(player.pos.x, player.pos.y, player.size.x,
-        player.size.y, player.angle), colors.white)
+    local playerPoly = player.poly
+    playerPoly.pos = player.pos
+    playerPoly.angle = player.angle
+    shapes.calculatePolygonTriangles(playerPoly)
 
     local collision0 = os.epoch(timeunit)
     for _, v in pairs(bounds) do
@@ -332,9 +363,10 @@ end
 
 ---@param player Player
 local function renderPlayer(player)
-    shapes.drawRectangle(player.pos.x, player.pos.y, player.size.x, player.size.y, player.color, player.angle, true)
-    shapes.drawRectangle(player.pos.x, player.pos.y,
-        player.turretSize.x, player.turretSize.y, player.turretColor, player.turretAngle, true)
+    shapes.drawPolygon(player.poly)
+    -- shapes.drawRectangle(player.pos.x, player.pos.y, player.size.x, player.size.y, player.color, player.angle, true)
+    -- shapes.drawRectangle(player.pos.x, player.pos.y,
+    --     player.turretSize.x, player.turretSize.y, player.turretColor, player.turretAngle, true)
     graphics.drawAngledLine(player.pos.x, player.pos.y, player.turretLength, player.turretAngle, player.turretColor)
 end
 
@@ -353,7 +385,10 @@ local function render()
     local render0 = os.epoch(timeunit)
     win.setVisible(false)
     box:clear(colors.black)
-    renderPlayer(mainPlayer)
+    -- renderPlayer(mainPlayer)
+    for _, v in pairs(players) do
+        renderPlayer(v)
+    end
     for _, v in pairs(bounds) do
         shapes.drawPolygon(v)
     end
@@ -363,10 +398,10 @@ local function render()
         -- win.setBackgroundColor(colors.black)
         -- win.setTextColor(colors.white)
         -- win.write("*")
-        shapes.drawPolygon(shapes.polygon(shapes.getRectanglePointsCorner(v.pos.x, v.pos.y, 2, 2), colors.white))
+        local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), colors.white)
+        shapes.drawPolygon(bulletPoly)
     end
     box:render()
-    shapes.renderers.debugUV(bounds[#bounds], flag)
     renderHud(mainPlayer)
     renderdt = os.epoch(timeunit) - render0
 end
@@ -404,7 +439,10 @@ local function gameLoop()
         local t0 = os.epoch(timeunit)
         collisionChecks, edgeChecks = 0, 0
         collisiondt, renderdt = 0, 0
-        updatePlayer(mainPlayer)
+        -- updatePlayer(mainPlayer)
+        for _, player in pairs(players) do
+            updatePlayer(player)
+        end
         for i in pairs(bullets) do
             updateBullet(i)
         end
