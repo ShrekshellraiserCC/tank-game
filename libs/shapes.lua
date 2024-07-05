@@ -1,5 +1,5 @@
 local trig = require "trig"
-local graphics = require "graphics"
+local graphics = require "libs.graphics"
 
 local function vectorize(v)
     return vector.new(v.x or 0, v.y or 0, v.z or 0)
@@ -156,9 +156,17 @@ local function calculatePolygonTriangles(poly)
     poly.triangles = earClipping(poly)
 end
 
+---@type table<color,Texture>
+local colorTextures = {}
+for _, v in pairs(colors) do
+    if type(v) == "number" then
+        colorTextures[v] = { data = { { v } }, w = 1, h = 1 }
+    end
+end
+
 ---@param pos Vector
 ---@param relPoints Point[]|Vector[] List of points, if UV not present it will be generated automatically
----@param color color
+---@param color color?
 ---@return Polygon
 local function polygon(pos, relPoints, color)
     ---@class Polygon
@@ -179,7 +187,9 @@ local function polygon(pos, relPoints, color)
     poly.angle = 0
     poly.uvbounds = { 0, 0, 1, 1 }
     poly.points = {}
-    poly.texture = { data = { { color } }, w = 1, h = 1 }
+    if color then
+        poly.texture = { data = { { color } }, w = 1, h = 1 }
+    end
     --- Points processing: Convert Vector to Point
     for i, v in ipairs(relPoints) do
         if v.x then
@@ -252,7 +262,9 @@ local function pointInPolygon(poly, point)
     return oddNodes
 end
 
-local reverseBlitLUT = {}
+local reverseBlitLUT = {
+    [" "] = -1
+}
 for _, color in pairs(colors) do
     if type(color) == "number" then
         reverseBlitLUT[colors.toBlit(color)] = color
@@ -277,10 +289,12 @@ end
 local function defaultFrag(poly, x, y, u, w)
     local tex = poly.texture
     local tw, th = tex.w, tex.h
-    local tx, ty = ((w * th) - 1) % th + 1, ((u * tw) - 1) % tw + 1
+    local tx, ty = (u * tw) % tw + 1, (w * th) % th + 1
     tx, ty = math.min(tw, math.max(1, tx)), math.min(th, math.max(1, ty))
     local col = tex.data[math.floor(ty)][math.floor(tx)]
-    graphics.setPixel(x, y, col)
+    if col ~= -1 then
+        graphics.setPixel(x, y, col)
+    end
 end
 
 ---Draw lines between a list of points
@@ -306,12 +320,9 @@ local function getRectangleCorners(w, h)
     return corners
 end
 
-local function loadTexture(fn)
-    local f = assert(fs.open(fn, "r"))
-    local t = f.readAll()
-    f.close()
-    local data = textutils.unserialise(t)
-    assert(type(data) == "table", ("File %s is not a valid file!"):format(fn))
+local function parseTexture(s)
+    local data = textutils.unserialise(s)
+    assert(type(data) == "table", "Invalid texture")
     local stage1
     if type(data[1]) == "table" then
         if type(data[1][1] == "table") then
@@ -324,7 +335,7 @@ local function loadTexture(fn)
     elseif type(data[1]) == "string" then
         stage1 = data
     end
-    assert(stage1, ("%s is not a recognized image!"):format(fn))
+    assert(stage1, "Not a valid image format!")
     local stage2 = { data = {} }
     for row, str in ipairs(stage1) do
         stage2.data[row] = {}
@@ -337,6 +348,120 @@ local function loadTexture(fn)
     return stage2
 end
 
+local function loadTexture(fn)
+    local f = assert(fs.open(fn, "r"))
+    local t = f.readAll()
+    f.close()
+    return parseTexture(t)
+end
+
+---@param axis Vector
+---@param poly Polygon
+---@return number min
+---@return number max
+local function projectPolygon(axis, poly)
+    local pointsVectors = {}
+    for i, v in ipairs(poly.apoints) do
+        pointsVectors[i] = vector.new(v[1], v[2], 0)
+    end
+    local dotProduct = axis:dot(pointsVectors[1])
+    local min, max = dotProduct, dotProduct
+    for i, v in ipairs(pointsVectors) do
+        dotProduct = v:dot(axis)
+        min = math.min(min, dotProduct)
+        max = math.max(max, dotProduct)
+    end
+    return min, max
+end
+
+local function intervalDistance(minA, maxA, minB, maxB)
+    if minA < minB then
+        return minB - maxA
+    end
+    return minA - maxB
+end
+
+---@param polyA Polygon
+---@param polyB Polygon
+---@param velocity Vector
+local function polygonCollision(polyA, polyB, velocity)
+    local intersect = true
+    local willIntersect = true
+
+    local edgeCountA = #polyA.points
+    local edgeCountB = #polyB.points
+    local minIntervalDistance = math.huge
+    local minTranslationVector = vector.new(0, 0, 0)
+    local translationAxis = vector.new(0, 0, 0)
+    local collisionNormal = vector.new(0, 0, 0)
+
+    local function getEdge(poly, index)
+        local currentPoint = poly.apoints[index]
+        local nextPoint = poly.apoints[(index % #poly.apoints) + 1]
+        return vector.new(nextPoint[1] - currentPoint[1], nextPoint[2] - currentPoint[2], 0),
+            vector.new((nextPoint[2] - currentPoint[2]), -(nextPoint[1] - currentPoint[1]), 0)
+    end
+
+    for i = 1, edgeCountA + edgeCountB - 1 do
+        local edge, normal
+        if i <= edgeCountA then
+            edge, normal = getEdge(polyA, i)
+        else
+            edge, normal = getEdge(polyB, i - edgeCountA)
+        end
+
+        local axis = vector.new(-edge.y, edge.x, 0)
+        axis = axis:normalize()
+
+        local minA, minB, maxA, maxB = 0, 0, 0, 0
+        minA, maxA = projectPolygon(axis, polyA)
+        minB, maxB = projectPolygon(axis, polyB)
+
+        if intervalDistance(minA, maxA, minB, maxB) > 0 then
+            intersect = false -- not currently intersecting
+        end
+
+        local velocityProjection = axis:dot(velocity)
+        if velocityProjection < 0 then
+            minA = minA + velocityProjection
+        else
+            maxA = maxA + velocityProjection
+        end
+
+        local distance = intervalDistance(minA, maxA, minB, maxB)
+        if distance > 0 then
+            willIntersect = false
+        end
+        if (not intersect) and (not willIntersect) then
+            break
+        end
+
+        distance = math.abs(distance)
+        if distance < minIntervalDistance then
+            minIntervalDistance = distance
+            translationAxis = axis
+            collisionNormal = normal
+
+            local d = polyA.center - polyB.center
+            if d:dot(translationAxis) < 0 then
+                translationAxis = translationAxis:unm()
+            end
+        end
+    end
+    if willIntersect then
+        minTranslationVector = translationAxis * minIntervalDistance
+    end
+    return {
+        willIntersect = willIntersect,
+        minimumTranslationVector = minTranslationVector,
+        intersect = intersect,
+        translationAxis = translationAxis,
+        collisionNormal = collisionNormal
+    }
+end
+
+
+
 return {
     polygon = polygon,
     getCirclePoints = getCirclePoints,
@@ -347,6 +472,7 @@ return {
     polyOverlap = polyOverlap,
     loadTexture = loadTexture,
     calculatePolygonTriangles = calculatePolygonTriangles,
-    renderers = {
-    },
+    colorTextures = colorTextures,
+    polygonCollision = polygonCollision,
+    parseTexture = parseTexture,
 }

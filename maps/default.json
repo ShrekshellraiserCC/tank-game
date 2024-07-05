@@ -1,0 +1,202 @@
+{
+    "name": "Dev",
+    "description": "Dev Map",
+    "walls": [
+        {
+            "shape": "rect",
+            "width": 510,
+            "height": 5,
+            "position": [
+                -5,
+                -5
+            ],
+            "color": "white"
+        },
+        {
+            "shape": "rect",
+            "width": 5,
+            "height": 110,
+            "position": [
+                -5,
+                -5
+            ],
+            "color": "white"
+        },
+        {
+            "shape": "rect",
+            "width": 510,
+            "height": 5,
+            "position": [
+                -5,
+                100
+            ],
+            "color": "white"
+        },
+        {
+            "shape": "rect",
+            "width": 5,
+            "height": 110,
+            "position": [
+                500,
+                -5
+            ],
+            "color": "white"
+        },
+        {
+            "shape": "rect",
+            "width": 10,
+            "height": 3,
+            "position": [
+                15,
+                25
+            ],
+            "color": "red"
+        },
+        {
+            "shape": "rect",
+            "width": 10,
+            "height": 3,
+            "position": [
+                15,
+                74
+            ],
+            "color": "red"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 10,
+            "position": [
+                23,
+                25
+            ],
+            "color": "red"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 6,
+            "position": [
+                23,
+                49
+            ],
+            "color": "red"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 10,
+            "position": [
+                23,
+                67
+            ],
+            "color": "red"
+        },
+        {
+            "shape": "rect",
+            "width": 10,
+            "height": 3,
+            "position": [
+                475,
+                25
+            ],
+            "color": "blue"
+        },
+        {
+            "shape": "rect",
+            "width": 10,
+            "height": 3,
+            "position": [
+                475,
+                74
+            ],
+            "color": "blue"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 10,
+            "position": [
+                475,
+                25
+            ],
+            "color": "blue"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 6,
+            "position": [
+                475,
+                49
+            ],
+            "color": "blue"
+        },
+        {
+            "shape": "rect",
+            "width": 3,
+            "height": 10,
+            "position": [
+                475,
+                67
+            ],
+            "color": "blue"
+        },
+        {
+            "shape": "circle",
+            "position": [
+                250,
+                25
+            ],
+            "radius": 10,
+            "quality": 8,
+            "texture": "debug"
+        },
+        {
+            "shape": "circle",
+            "position": [
+                250,
+                75
+            ],
+            "radius": 10,
+            "quality": 8,
+            "texture": "debug"
+        },
+        {
+            "shape": "ctr_rect",
+            "position": [
+                225,
+                50
+            ],
+            "height": 25,
+            "width": 3,
+            "color": "white"
+        },
+        {
+            "shape": "ctr_rect",
+            "position": [
+                275,
+                50
+            ],
+            "height": 25,
+            "width": 3,
+            "color": "white"
+        }
+    ],
+    "doors": [
+        {
+            "shape": "rect",
+            "width": 16,
+            "height": 3,
+            "position": [
+                1,
+                25
+            ],
+            "team": "red",
+            "color": "redShade"
+        }
+    ],
+    "textures": {
+        "debug": "{'0123','4567','89ab','cdef'}"
+    }
+}
