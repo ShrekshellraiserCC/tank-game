@@ -1,4 +1,4 @@
-local trig = require "trig"
+local trig = require "libs.trig"
 local graphics = require "libs.graphics"
 
 local function vectorize(v)

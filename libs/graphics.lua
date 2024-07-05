@@ -1,4 +1,4 @@
-local trig = require "trig"
+local trig = require "libs.trig"
 
 
 ---Perform a linear interpolation between v0 and v1
