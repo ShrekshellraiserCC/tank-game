@@ -170,7 +170,6 @@ end
 ---@return Polygon
 local function polygon(pos, relPoints, color)
     ---@class Polygon
-    ---@field renderer fun(poly: Polygon)?
     ---@field points Point[]
     ---@field bounds Point
     ---@field uvbounds Point

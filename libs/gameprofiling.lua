@@ -11,10 +11,10 @@ profile.totalRenderDt = 0
 profile.totalCollisionDt = 0
 profile.timeunit = "utc"
 profile.timelabel = "ms"
+profile.enableOverlay = false
 
-local enableOverlay = true
 function profile.display(win)
-    if enableOverlay then
+    if profile.enableOverlay then
         win.setCursorPos(1, 1)
         win.write(("Frame %d"):format(profile.frameCount))
         win.setCursorPos(1, 2)
