@@ -134,6 +134,7 @@ local function worldToScreenPos(x, y)
     return trig.round(x - cx + mx), trig.round(y - cy + my)
 end
 
+---@param color color
 local function setPixel(x, y, color)
     local ax, ay = trig.round(x - cx + mx), trig.round(y - cy + my)
     if ax < 1 or ay < 1 or ax > tw * 2 or ay > th * 3 then

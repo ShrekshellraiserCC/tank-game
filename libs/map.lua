@@ -85,9 +85,13 @@ local function parsePolygon(loaded, part, i, desc)
 end
 
 ---@return LoadedMap
-local function loadMap(json)
+local function loadMap(s)
+    local json = s
     if type(json) == "string" then
-        json = textutils.unserialise(json)
+        json = textutils.unserialise(s)
+    end
+    if type(json) ~= "table" then
+        json = textutils.unserialiseJSON(s)
     end
     nassert(type(json) == "table", "Map is not a table!")
     nassert(json.name, "Map is invalid, it has no name!")
@@ -149,6 +153,7 @@ end
 
 return {
     loadMap = loadMap,
+    readFile = readFile,
     loadMapFile = loadMapFile,
     renderMap = renderMap
 }

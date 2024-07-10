@@ -62,7 +62,7 @@ local clientGameEventHandlers = {
     player_fire_shot = function(d)
         local player = gamedata.players[d.id]
         player.turretAngle = d.angle
-        gamedata.fire(player, vectorize(d.pos), vectorize(d.vel))
+        gamedata.fire(d.bid, player)
     end,
     player_aim = function(d)
         local player = gamedata.players[d.id]
@@ -74,19 +74,53 @@ local clientGameEventHandlers = {
         bullet.pos = vector.new(d.x, d.y, 0)
         bullet.vel = vector.new(d.vx, d.vy, 0)
     end,
+    bullet_destroy = function(d)
+        if gamedata.bullets[d.id] then
+            gamedata.explosion(gamedata.bullets[d.id].pos)
+        end
+        gamedata.bullets[d.id] = nil
+    end,
     player_join = function(d)
-        gamedata.newPlayer(d.id)
+        gamedata.newPlayer(d.id, d.name)
     end,
     player_respawn = function(d)
         local player = gamedata.players[d.id]
         gamedata.respawnPlayer(player)
     end,
-    player_change_team = function(d)
+    player_set_team = function(d)
         local player = gamedata.players[d.id]
         gamedata.setPlayerTeam(player, d.team)
     end,
-    player_die = function(d)
-
+    player_set_class = function(d)
+        local player = gamedata.players[d.id]
+        gamedata.setPlayerClass(player, d.class)
+    end,
+    player_died = function(d)
+        local player = gamedata.players[d.id]
+        player.alive = false
+        gamedata.explosion(player.pos)
+        if gamedata.bullets[d.bid] then
+            local owner = gamedata.bullets[d.bid].owner
+            gamedata.killer = gamedata.players[owner]
+            player.spectating = owner
+        end
+        gamedata.bullets[d.bid] = nil
+    end,
+    game_tick = function(d)
+        if d.players then
+            for _, v in ipairs(d.players) do
+                local player = gamedata.players[v.id]
+                player.pos = vectorize(v.pos)
+                player.angle = v.angle
+            end
+        end
+        if d.bullets then
+            for _, v in ipairs(d.bullets) do
+                gamedata.newBullet(v.id, v.owner, vectorize(v.pos), vectorize(v.vel))
+                -- local bullet = gamedata.bullets[v.id]
+                -- bullet.pos = vectorize(v.pos)
+            end
+        end
     end
 }
 
@@ -131,8 +165,14 @@ local function serializePlayer(player)
     end
     splayer.poly = nil
     splayer.turretPoly = nil
-    player.color = nil
-    player.turretColor = nil
+    splayer.color = nil
+    splayer.turretColor = nil
+    splayer.turretSize = nil
+    splayer.size = nil
+    splayer.baseStats = nil
+    splayer.boostStats = nil
+    splayer.classValid = nil
+    splayer.teamValid = nil
 
     return splayer
 end
@@ -144,9 +184,11 @@ local function unserializePlayer(splayer)
         player[k] = v
     end
     player.pos = vectorize(splayer.pos)
-    player.size = vectorize(splayer.size)
     if player.team then
-        gamedata.createPlayerPolys(player)
+        gamedata.setPlayerTeam(player, player.team)
+    end
+    if player.class then
+        gamedata.setPlayerClass(player, player.class)
     end
     return player
 end
@@ -161,6 +203,7 @@ end
 
 local serverEventHandlers = {
     player_fire_shot = function(d)
+        d.bid = #gamedata.bullets + 1
         -- local player = gamedata.players[d.id]
         -- player.turretAngle = d.angle
         -- d.pos = player.pos + gamedata.ray(player.turretLength, player.turretAngle)
@@ -193,14 +236,15 @@ local function serverHandleMessage(sender, message)
             username = message.username,
             lastMessage = os.epoch('utc')
         }
-        gamedata.newPlayer(sender)
+        gamedata.newPlayer(sender, message.username)
         rednet.send(sender, {
             type = "join",
             state = true,
             players = serializePlayers()
         }, PROTOCOL)
-        network.queueGameEvent("player_join", { id = sender })
-        network.queueGameEvent("player_change_team", { id = sender, team = sender == 2 and "red" or "blue" })
+        network.queueGameEvent("player_join", { id = sender, name = message.username })
+        network.queueGameEvent("player_set_team", { id = sender, team = sender == 2 and "red" or "blue" })
+        network.queueGameEvent("player_set_class", { id = sender, class = sender == 2 and "base" or "heavy" })
         network.queueGameEvent("player_respawn", { id = sender })
     end
 end
@@ -208,13 +252,37 @@ end
 local function serverTick()
     while true do
         sleep(gamedata.tickTime)
-        if #gameEvents > 1 then
-            rednet.broadcast({ type = "game_event_bundle", data = gameEvents }, PROTOCOL)
-            gameEvents = {}
-        elseif #gameEvents == 1 then
-            local event = gameEvents[1]
-            rednet.broadcast({ type = "game_event", event = event.type, data = event.data }, PROTOCOL)
-            gameEvents = {}
+        local updatedPlayers = {}
+        for _, player in pairs(gamedata.players) do
+            if player.velocity ~= 0 then
+                updatedPlayers[#updatedPlayers + 1] = {
+                    id = player.id,
+                    pos = player.pos,
+                    angle = player.angle
+                }
+            end
+        end
+        local updatedBullets = {}
+        for _, bullet in pairs(gamedata.bullets) do
+            updatedBullets[#updatedBullets + 1] = {
+                id = bullet.id,
+                owner = bullet.owner,
+                pos = bullet.pos,
+                vel = bullet.vel
+            }
+        end
+        local tickInfo = {}
+        local substancialTick = false
+        if #updatedPlayers > 0 then
+            tickInfo.players = updatedPlayers
+            substancialTick = true
+        end
+        if #updatedBullets > 0 then
+            tickInfo.bullets = updatedBullets
+            substancialTick = true
+        end
+        if substancialTick then
+            sendGameEventToClients("game_tick", tickInfo)
         end
     end
 end
@@ -270,14 +338,17 @@ function network.startClient(username, server)
         print("Found", hostid)
     end
     assert(connectToServer(username), "Failed to connect to server")
-    parallel.waitForAny(clientGameEventHandler, clientConnection, gamedata.gameLoop, gamedata.inputLoop)
+    gamedata.startClientTicking()
+    gamedata.startClientDrawing()
+    parallel.waitForAny(clientGameEventHandler, clientConnection, gamedata.inputLoop, gamedata.callbackHandlers)
 end
 
 ---@param hostname string
 function network.startServer(hostname)
     network.isServer = true
     serverHostname = hostname
-    parallel.waitForAny(serverConnection, gamedata.gameLoop)
+    gamedata.startServerTicking()
+    parallel.waitForAny(serverConnection, serverTick, gamedata.callbackHandlers)
 end
 
 return network

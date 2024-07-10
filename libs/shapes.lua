@@ -246,12 +246,12 @@ end
 ---@param point Vector
 local function pointInPolygon(poly, point)
     local oddNodes = false
-    local j = #poly.points
+    local j = #poly.apoints
 
-    for i = 1, #poly.points do
-        if (poly.points[i][2] < point.y and poly.points[j][2] >= point.y or poly.points[j][2] < point.y and poly.points[i][2] >= point.y) and
-            (poly.points[i][1] <= point.x or poly.points[j][1] <= point.x) then
-            if poly.points[i][1] + (point.y - poly.points[i][2]) / (poly.points[j][2] - poly.points[i][2]) * (poly.points[j][1] - poly.points[i][1]) < point.x then
+    for i = 1, #poly.apoints do
+        if (poly.apoints[i][2] < point.y and poly.apoints[j][2] >= point.y or poly.apoints[j][2] < point.y and poly.apoints[i][2] >= point.y) and
+            (poly.apoints[i][1] <= point.x or poly.apoints[j][1] <= point.x) then
+            if poly.apoints[i][1] + (point.y - poly.apoints[i][2]) / (poly.apoints[j][2] - poly.apoints[i][2]) * (poly.apoints[j][1] - poly.apoints[i][1]) < point.x then
                 oddNodes = not oddNodes
             end
         end
@@ -474,4 +474,5 @@ return {
     colorTextures = colorTextures,
     polygonCollision = polygonCollision,
     parseTexture = parseTexture,
+    pointInPolygon = pointInPolygon
 }
