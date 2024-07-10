@@ -1,17 +1,18 @@
-local trig = require "libs.trig"
+local graphics = {}
 
+local trig = require "libs.trig"
 
 ---Perform a linear interpolation between v0 and v1
 ---@param v0 number
 ---@param v1 number
 ---@param t number [0,1]
 ---@return number
-local function lerp(v0, v1, t)
+function graphics.lerp(v0, v1, t)
     return v0 + t * (v1 - v0)
 end
 
 local box
-local function setBox(b)
+function graphics.setBox(b)
     box = b
 end
 
@@ -22,7 +23,7 @@ local xmin = cx - mx
 local xmax = cx + mx
 local ymin = cy - my
 local ymax = cy + my
-local function setViewCenter(x, y)
+function graphics.setViewCenter(x, y)
     cx, cy = x, y
     xmin = cx - mx
     xmax = cx + mx
@@ -57,7 +58,7 @@ end
 ---@param p2 Point
 ---@param p3 Point
 ---@param frag fun(poly: Polygon, x: number, y: number, u: number, v: number)
-local function renderTriangle(poly, p1, p2, p3, frag)
+function graphics.renderTriangle(poly, p1, p2, p3, frag)
     if p1[2] > p3[2] then p1, p3 = p3, p1 end
     if p1[2] > p2[2] then p1, p2 = p2, p1 end
     if p2[2] > p3[2] then p2, p3 = p3, p2 end
@@ -115,13 +116,12 @@ local function renderTriangle(poly, p1, p2, p3, frag)
     end
 end
 
-
 ---Convert a coordinate in screen to world position (in pixels)
 ---@param x number
 ---@param y number
 ---@return integer
 ---@return integer
-local function screenToWorldPos(x, y)
+function graphics.screenToWorldPos(x, y)
     return trig.round(x + cx - mx), trig.round(y + cy - my)
 end
 
@@ -130,12 +130,12 @@ end
 ---@param y number
 ---@return integer
 ---@return integer
-local function worldToScreenPos(x, y)
+function graphics.worldToScreenPos(x, y)
     return trig.round(x - cx + mx), trig.round(y - cy + my)
 end
 
 ---@param color color
-local function setPixel(x, y, color)
+function graphics.setPixel(x, y, color)
     local ax, ay = trig.round(x - cx + mx), trig.round(y - cy + my)
     if ax < 1 or ay < 1 or ax > tw * 2 or ay > th * 3 then
         return
@@ -149,12 +149,12 @@ end
 ---@param x1 number
 ---@param y1 number
 ---@param color color
-local function drawLine(x0, y0, x1, y1, color)
+function graphics.drawLine(x0, y0, x1, y1, color)
     local length = math.sqrt((x1 - x0) ^ 2 + (y1 - y0) ^ 2)
     for t = 0, 1, 1 / (length * 1.1) do
-        local x = lerp(x0, x1, t)
-        local y = lerp(y0, y1, t)
-        setPixel(trig.round(x), trig.round(y), color)
+        local x = graphics.lerp(x0, x1, t)
+        local y = graphics.lerp(y0, y1, t)
+        graphics.setPixel(trig.round(x), trig.round(y), color)
     end
 end
 
@@ -164,12 +164,12 @@ end
 ---@param length number
 ---@param angle number
 ---@param color color
-local function drawAngledLine(x, y, length, angle, color)
+function graphics.drawAngledLine(x, y, length, angle, color)
     local x1, y1 = x + length * trig.cos(angle), y + length * trig.sin(angle)
-    drawLine(x, y, x1, y1, color)
+    graphics.drawLine(x, y, x1, y1, color)
 end
 
-local function calculateAngle(x0, y0, x1, y1)
+function graphics.calculateAngle(x0, y0, x1, y1)
     local dx = x1 - x0
     local angle = trig.atan((y1 - y0) / (x1 - x0))
     if dx < 0 then
@@ -183,23 +183,10 @@ end
 ---@param rxmax number
 ---@param rymax number
 ---@return boolean
-local function withinViewport(rxmin, rymin, rxmax, rymax)
-    rxmin, rymin = worldToScreenPos(rxmin, rymin)
-    rxmax, rymax = worldToScreenPos(rxmax, rymax)
+function graphics.withinViewport(rxmin, rymin, rxmax, rymax)
+    rxmin, rymin = graphics.worldToScreenPos(rxmin, rymin)
+    rxmax, rymax = graphics.worldToScreenPos(rxmax, rymax)
     return (rymin < th * 3 and rymax > 0) and (rxmin < tw * 2 and rxmax > 0)
 end
 
-
-return {
-    setBox = setBox,
-    setPixel = setPixel,
-    renderTriangle = renderTriangle,
-    drawLine = drawLine,
-    setViewCenter = setViewCenter,
-    drawAngledLine = drawAngledLine,
-    calculateAngle = calculateAngle,
-    screenToWorldPos = screenToWorldPos,
-    worldToScreenPos = worldToScreenPos,
-    withinViewport = withinViewport,
-    lerp = lerp
-}
+return graphics

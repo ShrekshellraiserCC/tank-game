@@ -1,3 +1,5 @@
+local palette = {}
+
 local newPalette = {
     white = 0xffffff,     -- 0
 
@@ -8,7 +10,7 @@ local newPalette = {
     black = 0,            -- f
 }
 ---@class colorDefinition
-local colorlut = {
+palette.colors = {
     white = colors.white,    -- 0
 
     blueShade = colors.cyan, -- 9
@@ -18,13 +20,10 @@ local colorlut = {
     black = colors.black,    -- f
 }
 
-local function apply(win)
-    for k, v in pairs(colorlut) do
+function palette.apply(win)
+    for k, v in pairs(palette.colors) do
         win.setPaletteColor(v, newPalette[k])
     end
 end
 
-return {
-    colors = colorlut,
-    apply = apply
-}
+return palette

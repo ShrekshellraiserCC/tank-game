@@ -1,9 +1,7 @@
+local shapes = {}
+
 local trig = require "libs.trig"
 local graphics = require "libs.graphics"
-
-local function vectorize(v)
-    return vector.new(v.x or 0, v.y or 0, v.z or 0)
-end
 
 -- Ear clipping algorithm to triangulate polygon
 ---@return integer[][]
@@ -13,12 +11,6 @@ local earClipping
 ---@field data color[][]
 ---@field w integer
 ---@field h integer
-
-local function log(s, ...)
-    local f = assert(fs.open("log.txt", "a"))
-    f.writeLine(s:format(...))
-    f.close()
-end
 
 ---@param poly Polygon
 local function calculatePolygonBounds(poly)
@@ -168,7 +160,7 @@ end
 ---@param relPoints Point[]|Vector[] List of points, if UV not present it will be generated automatically
 ---@param color color?
 ---@return Polygon
-local function polygon(pos, relPoints, color)
+function shapes.polygon(pos, relPoints, color)
     ---@class Polygon
     ---@field points Point[]
     ---@field bounds Point
@@ -209,7 +201,7 @@ end
 
 ---@param poly Polygon
 ---@return Vector[] points
-local function getPolygonWorldVectors(poly)
+function shapes.getPolygonWorldVectors(poly)
     local vecs = {}
     for i, v in ipairs(poly.apoints) do
         vecs[i] = vector.new(v[1], v[2], 0)
@@ -217,12 +209,11 @@ local function getPolygonWorldVectors(poly)
     return vecs
 end
 
-
 ---Get the corners of a rectangle, starting from the top-left corner.
 ---@param w number
 ---@param h number
 ---@return Point[]
-local function getRectanglePointsCorner(w, h)
+function shapes.getRectanglePointsCorner(w, h)
     return { { 0, 0 }, { w, 0 }, { w, h }, { 0, h } }
 end
 
@@ -230,7 +221,7 @@ end
 ---@param r number
 ---@param sides number
 ---@return Point[]
-local function getCirclePoints(r, sides)
+function shapes.getCirclePoints(r, sides)
     local points = {}
     for i = 0, 359, 359 / sides do
         local dx = r * trig.cos(i)
@@ -244,7 +235,7 @@ end
 
 ---@param poly Polygon
 ---@param point Vector
-local function pointInPolygon(poly, point)
+function shapes.pointInPolygon(poly, point)
     local oddNodes = false
     local j = #poly.apoints
 
@@ -271,7 +262,7 @@ for _, color in pairs(colors) do
 end
 
 ---@param poly Polygon
-local function polyWithinViewport(poly)
+function shapes.polyWithinViewport(poly)
     return graphics.withinViewport(poly.bounds[1] + poly.pos.x, poly.bounds[2] + poly.pos.y, poly.bounds[3] + poly.pos.x,
         poly.bounds[4] + poly.pos.y)
 end
@@ -279,7 +270,7 @@ end
 ---@param polyA Polygon
 ---@param polyB Polygon
 ---@param padding number?
-local function polyOverlap(polyA, polyB, padding)
+function shapes.polyOverlap(polyA, polyB, padding)
     padding = padding or 0
     return (polyA.bounds[1] - padding < polyB.bounds[3] and polyA.bounds[3] + padding > polyB.bounds[1]) and
         (polyA.bounds[2] - padding < polyB.bounds[4] and polyA.bounds[4] + padding > polyB.bounds[2])
@@ -298,7 +289,7 @@ end
 
 ---Draw lines between a list of points
 ---@param poly Polygon
-local function drawPolygon(poly)
+function shapes.drawPolygon(poly)
     -- if not polyWithinViewport(poly) then return end
     for _, tri in ipairs(poly.triangles) do
         graphics.renderTriangle(poly, tri[1], tri[2], tri[3], defaultFrag)
@@ -309,7 +300,7 @@ end
 ---@param w number
 ---@param h number
 ---@return Point[]
-local function getRectangleCorners(w, h)
+function shapes.getRectangleCorners(w, h)
     local corners = {
         { -w / 2, -h / 2 },
         { w / 2,  -h / 2 },
@@ -319,7 +310,7 @@ local function getRectangleCorners(w, h)
     return corners
 end
 
-local function parseTexture(s)
+function shapes.parseTexture(s)
     local data = textutils.unserialise(s)
     assert(type(data) == "table", "Invalid texture")
     local stage1
@@ -347,11 +338,11 @@ local function parseTexture(s)
     return stage2
 end
 
-local function loadTexture(fn)
+function shapes.loadTexture(fn)
     local f = assert(fs.open(fn, "r"))
     local t = f.readAll()
     f.close()
-    return parseTexture(t)
+    return shapes.parseTexture(t)
 end
 
 ---@param axis Vector
@@ -383,7 +374,7 @@ end
 ---@param polyA Polygon
 ---@param polyB Polygon
 ---@param velocity Vector
-local function polygonCollision(polyA, polyB, velocity)
+function shapes.polygonCollision(polyA, polyB, velocity)
     local intersect = true
     local willIntersect = true
 
@@ -459,20 +450,4 @@ local function polygonCollision(polyA, polyB, velocity)
     }
 end
 
-
-
-return {
-    polygon = polygon,
-    getCirclePoints = getCirclePoints,
-    getRectangleCorners = getRectangleCorners,
-    getRectanglePointsCorner = getRectanglePointsCorner,
-    drawPolygon = drawPolygon,
-    polyWithinViewport = polyWithinViewport,
-    polyOverlap = polyOverlap,
-    loadTexture = loadTexture,
-    calculatePolygonTriangles = calculatePolygonTriangles,
-    colorTextures = colorTextures,
-    polygonCollision = polygonCollision,
-    parseTexture = parseTexture,
-    pointInPolygon = pointInPolygon
-}
+return shapes

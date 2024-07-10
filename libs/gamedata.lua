@@ -1,9 +1,11 @@
-local palette  = require "libs.palette"
-local shapes   = require "libs.shapes"
-local map      = require "libs.map"
-local trig     = require "libs.trig"
-local profile  = require "libs.gameprofiling"
-local graphics = require "libs.graphics"
+local gamedata    = {}
+
+local palette     = require "libs.palette"
+local shapes      = require "libs.shapes"
+local map         = require "libs.map"
+local trig        = require "libs.trig"
+local profile     = require "libs.gameprofiling"
+local graphics    = require "libs.graphics"
 
 ---@class Team
 ---@field color color
@@ -12,13 +14,12 @@ local graphics = require "libs.graphics"
 
 ---@alias TeamID "red"|"blue"
 
-local data     = {}
-local friction = 0.99
+local friction    = 0.99
 
-data.tickTime  = 0.05
+gamedata.tickTime = 0.05
 
 ---@type table<TeamID,Team>
-data.teams     = {
+gamedata.teams    = {
     red = {
         color = palette.colors.red,
         tankTexture = shapes.loadTexture("textures/red_tank.tex"),
@@ -42,7 +43,7 @@ data.teams     = {
 ---@alias ClassID "base" | "heavy"
 
 ---@type table<ClassID,Class>
-data.classes   = {
+gamedata.classes  = {
     base = {
         weapon = {
             shotCapacity = 3,
@@ -54,9 +55,9 @@ data.classes   = {
             bulletVelocity = 2,
             bulletParticleTick = function(player, bullet)
                 if math.random() > 0.3 then
-                    local vel, angle = data.getRay(bullet.vel)
+                    local vel, angle = gamedata.getRay(bullet.vel)
                     local particleAngle = (angle + 180 + math.random(-20, 20)) % 360
-                    data.newParticle(bullet.pos, data.ray(vel * 0.4, particleAngle), 1000, colors.gray)
+                    gamedata.newParticle(bullet.pos, gamedata.ray(vel * 0.4, particleAngle), 1000, colors.gray)
                 end
             end,
             health = 1
@@ -86,9 +87,9 @@ data.classes   = {
             bulletVelocity = 2,
             bulletParticleTick = function(player, bullet)
                 if math.random() > 0.3 then
-                    local vel, angle = data.getRay(bullet.vel)
+                    local vel, angle = gamedata.getRay(bullet.vel)
                     local particleAngle = (angle + 180 + math.random(-20, 20)) % 360
-                    data.newParticle(bullet.pos, data.ray(vel * 0.4, particleAngle), 1000, colors.gray)
+                    gamedata.newParticle(bullet.pos, gamedata.ray(vel * 0.4, particleAngle), 1000, colors.gray)
                 end
             end,
             health = 2
@@ -149,10 +150,10 @@ data.classes   = {
 ---@field spectating integer?
 
 ---@type table<integer,Player>
-data.players   = {}
+gamedata.players  = {}
 
 ---@type table<integer,Bullet>
-data.bullets   = {}
+gamedata.bullets  = {}
 
 
 ---@class Particle
@@ -163,28 +164,28 @@ data.bullets   = {}
 ---@field creation number
 
 ---@type table<number,Particle>
-data.particles = {}
+gamedata.particles = {}
 
 ---@param player Player
-function data.createPlayerPolys(player)
+function gamedata.createPlayerPolys(player)
     player.poly = shapes.polygon(player.pos, shapes.getRectangleCorners(player.size.x, player.size.y), player.color)
-    player.poly.texture = data.teams[player.team].tankTexture
+    player.poly.texture = gamedata.teams[player.team].tankTexture
     player.poly.angle = player.angle
     player.turretPoly = shapes.polygon(player.pos, shapes.getRectangleCorners(player.turretSize.x, player.turretSize.y),
         player.color)
-    player.turretPoly.texture = data.teams[player.team].turretTexture
+    player.turretPoly.texture = gamedata.teams[player.team].turretTexture
     player.turretPoly.angle = player.turretAngle
 end
 
 ---@param player Player
 ---@param team TeamID
-function data.setPlayerTeam(player, team)
-    player.color = data.teams[team].color
-    player.turretColor = data.teams[team].color
+function gamedata.setPlayerTeam(player, team)
+    player.color = gamedata.teams[team].color
+    player.turretColor = gamedata.teams[team].color
     player.team = team
     player.teamValid = true
     if player.classValid then
-        data.createPlayerPolys(player)
+        gamedata.createPlayerPolys(player)
     end
 end
 
@@ -198,8 +199,8 @@ end
 
 ---@param player Player
 ---@param class ClassID
-function data.setPlayerClass(player, class)
-    local info = data.classes[class]
+function gamedata.setPlayerClass(player, class)
+    local info = gamedata.classes[class]
     player.weapon = sclone(info.weapon)
     player.class = class
     player.baseStats = sclone(info.baseStats)
@@ -209,12 +210,12 @@ function data.setPlayerClass(player, class)
     player.turretSize = info.turretSize * 1
     player.classValid = true
     if player.teamValid then
-        data.createPlayerPolys(player)
+        gamedata.createPlayerPolys(player)
     end
 end
 
 ---@param player Player
-function data.respawnPlayer(player)
+function gamedata.respawnPlayer(player)
     player.alive = true
     player.pos = vector.new(30, 30, 0)
     player.angle = 0
@@ -223,7 +224,7 @@ end
 ---@param id integer
 ---@param name string
 ---@return Player
-function data.newPlayer(id, name)
+function gamedata.newPlayer(id, name)
     local player = {
         pos = vector.new(30, 30, 0),
         angle = 0,
@@ -236,7 +237,7 @@ function data.newPlayer(id, name)
         id = id,
         name = name
     }
-    data.players[id] = player
+    gamedata.players[id] = player
     return player
 end
 
@@ -259,7 +260,7 @@ local function tickPlayerPolygons(player)
 end
 
 ---@param player Player
-function data.tickPlayer(player)
+function gamedata.tickPlayer(player)
     if player.alive then
         local stats = player.boosting and player.boostStats or player.baseStats
 
@@ -286,7 +287,7 @@ function data.tickPlayer(player)
         local playerPoly = player.poly
 
         local collision0 = os.epoch(profile.timeunit)
-        for _, v in pairs(data.map.walls) do
+        for _, v in pairs(gamedata.map.walls) do
             if shapes.polyOverlap(playerPoly, v, 20) then
                 local r = shapes.polygonCollision(playerPoly, v, translation)
                 if r.willIntersect then
@@ -294,7 +295,7 @@ function data.tickPlayer(player)
                 end
             end
         end
-        for _, v in ipairs(data.map.doors) do
+        for _, v in ipairs(gamedata.map.doors) do
             term.setCursorPos(1, 1)
             if v.team ~= player.team then
                 if shapes.polyOverlap(playerPoly, v, 20) then
@@ -319,8 +320,8 @@ end
 ---@param pos Vector
 ---@param velocity Vector
 ---@return Bullet
-function data.newBullet(id, owner, pos, velocity)
-    local player = data.players[owner]
+function gamedata.newBullet(id, owner, pos, velocity)
+    local player = gamedata.players[owner]
     ---@class Bullet
     local bullet = {
         pos = pos,
@@ -332,14 +333,14 @@ function data.newBullet(id, owner, pos, velocity)
         id = id,
         owner = owner,
     }
-    data.bullets[id] = bullet
+    gamedata.bullets[id] = bullet
     return bullet
 end
 
 ---@param vec Vector
 ---@return number magnitude
 ---@return number degrees
-function data.getRay(vec)
+function gamedata.getRay(vec)
     local magnitude = vec:length()
     local angle = 0
     if magnitude > 0 then
@@ -351,21 +352,21 @@ function data.getRay(vec)
     return magnitude, angle
 end
 
-function data.tickBulletClient(i)
-    local bullet = data.bullets[i]
+function gamedata.tickBulletClient(i)
+    local bullet = gamedata.bullets[i]
 
-    local player = data.players[bullet.owner]
+    local player = gamedata.players[bullet.owner]
     player.weapon.bulletParticleTick(player, bullet)
 end
 
 ---@param i integer
-function data.tickBulletServer(i)
+function gamedata.tickBulletServer(i)
     local network = require "libs.gamenetwork"
-    local bullet = data.bullets[i]
+    local bullet = gamedata.bullets[i]
     bullet.vel = bullet.vel * friction
     if bullet.vel:length() < 0.4 or bullet.health <= 0 then
         network.queueGameEvent("bullet_destroy", { id = i })
-        data.bullets[i] = nil
+        gamedata.bullets[i] = nil
         return
     end
     local translation = bullet.vel
@@ -382,7 +383,7 @@ function data.tickBulletServer(i)
             if r.willIntersect then
                 if bullet.remainingBounces == 0 then
                     network.queueGameEvent("bullet_destroy", { id = i })
-                    data.bullets[i] = nil
+                    gamedata.bullets[i] = nil
                     return
                 end
                 translation = translation + r.minimumTranslationVector * 1.2
@@ -393,15 +394,15 @@ function data.tickBulletServer(i)
         end
     end
 
-    for _, v in ipairs(data.map.walls) do
+    for _, v in ipairs(gamedata.map.walls) do
         collide(v)
     end
-    for _, v in ipairs(data.map.doors) do
+    for _, v in ipairs(gamedata.map.doors) do
         collide(v)
     end
-    local player = data.players[bullet.owner]
+    local player = gamedata.players[bullet.owner]
     if bullet.created + 300 < os.epoch('utc') then
-        for _, v in pairs(data.players) do
+        for _, v in pairs(gamedata.players) do
             if v.alive then
                 local colliding = false
                 colliding = shapes.polygonCollision(bulletPoly, v.poly, translation).intersect
@@ -418,11 +419,12 @@ function data.tickBulletServer(i)
     bullet.ticksToLive = bullet.ticksToLive - 1
     if bullet.ticksToLive == 0 then
         network.queueGameEvent("bullet_destroy", { id = i })
-        data.bullets[i] = nil
+        gamedata.bullets[i] = nil
         return
     end
-    if collisionOccured and data.isServer then
-        data.queueGameEvent("bullet_bounce", { x = bullet.pos.x, y = bullet.pos.y, vx = bullet.vel.x, vy = bullet.vel.y })
+    if collisionOccured and gamedata.isServer then
+        gamedata.queueGameEvent("bullet_bounce",
+            { x = bullet.pos.x, y = bullet.pos.y, vx = bullet.vel.x, vy = bullet.vel.y })
     end
 end
 
@@ -430,8 +432,8 @@ end
 ---@param vel Vector
 ---@param lifetime number
 ---@param color color
-function data.newParticle(pos, vel, lifetime, color)
-    data.particles[#data.particles + 1] = {
+function gamedata.newParticle(pos, vel, lifetime, color)
+    gamedata.particles[#gamedata.particles + 1] = {
         pos = pos,
         vel = vel,
         lifetime = lifetime,
@@ -441,26 +443,26 @@ function data.newParticle(pos, vel, lifetime, color)
 end
 
 ---@param i integer
-function data.tickParticle(i)
-    local particle = data.particles[i]
+function gamedata.tickParticle(i)
+    local particle = gamedata.particles[i]
 
     particle.pos = particle.pos + particle.vel
     particle.vel = particle.vel * friction
     if os.epoch('utc') > particle.creation + particle.lifetime then
-        data.particles[i] = nil
+        gamedata.particles[i] = nil
     end
 end
 
-data.mapData = map.readFile("maps/default.json")
+gamedata.mapData = map.readFile("maps/default.json")
 ---@type LoadedMap
-data.map = map.loadMap(data.mapData)
+gamedata.map = map.loadMap(gamedata.mapData)
 
-function data.reset()
-    data.players = {}
+function gamedata.reset()
+    gamedata.players = {}
 end
 
 ---@param player Player
-function data.canFire(player)
+function gamedata.canFire(player)
     local weapon = player.weapon
     return player.alive and os.epoch('utc') - weapon.lastFireTime > weapon.fireDelay and weapon.shotsRemaining > 0
 end
@@ -471,33 +473,33 @@ end
 local function ray(magnitude, angle)
     return vector.new(magnitude * trig.cos(angle), magnitude * trig.sin(angle), 0)
 end
-data.ray = ray
+gamedata.ray = ray
 
 ---@param bid integer
 ---@param player Player
-function data.fire(bid, player, pos, vel)
-    if not data.canFire(player) then return end
+function gamedata.fire(bid, player, pos, vel)
+    if not gamedata.canFire(player) then return end
     local weapon = player.weapon
     weapon.lastFireTime = os.epoch('utc')
     weapon.lastReloadTime = weapon.lastFireTime
     weapon.shotsRemaining = weapon.shotsRemaining - 1
     pos = pos or player.pos + ray(player.turretLength, player.turretAngle)
     vel = vel or ray(weapon.bulletVelocity, player.turretAngle) + ray(player.velocity, player.angle + 90)
-    data.newBullet(bid, player.id, pos, vel)
+    gamedata.newBullet(bid, player.id, pos, vel)
 end
 
-function data.explosion(pos)
+function gamedata.explosion(pos)
     for i = 1, 10 do
         -- orange flame particles
         local vel = math.random()
         local angle = math.random(0, 360)
-        data.newParticle(pos, data.ray(vel, angle), 800, colors.orange)
+        gamedata.newParticle(pos, gamedata.ray(vel, angle), 800, colors.orange)
     end
     for i = 1, 30 do
         -- smoke particles
         local vel = math.random() * 2
         local angle = math.random(0, 360)
-        data.newParticle(pos, data.ray(vel, angle), 800, colors.gray)
+        gamedata.newParticle(pos, gamedata.ray(vel, angle), 800, colors.gray)
     end
 end
 
@@ -520,7 +522,7 @@ local tw, th = term.getSize()
 local win, box
 ---@param window Window
 ---@param pixelbox table
-function data.setupRendering(window, pixelbox)
+function gamedata.setupRendering(window, pixelbox)
     win = window
     box = pixelbox
 end
@@ -535,7 +537,7 @@ local function renderPlayer(player)
 end
 
 ---@type Player?
-data.killer = nil
+gamedata.killer = nil
 
 ---@param player Player
 local function renderHud(player)
@@ -560,9 +562,9 @@ local function renderHud(player)
             win.setCursorPos(x + 2, y + 1)
             win.write(str)
         end
-    elseif data.killer then
+    elseif gamedata.killer then
         local w, h = win.getSize()
-        local str = ("Killed by %s"):format(data.killer.name)
+        local str = ("Killed by %s"):format(gamedata.killer.name)
         win.setCursorPos((w - #str) / 2, h - 2)
         win.write(str)
     end
@@ -573,20 +575,20 @@ local function render()
     local render0 = os.epoch(profile.timeunit)
     win.setVisible(false)
     box:clear(colors.black)
-    map.renderMap(data.map)
-    for i, v in pairs(data.particles) do
+    map.renderMap(gamedata.map)
+    for i, v in pairs(gamedata.particles) do
         graphics.setPixel(v.pos.x, v.pos.y, v.color)
     end
-    for _, v in pairs(data.players) do
+    for _, v in pairs(gamedata.players) do
         renderPlayer(v)
     end
-    for _, v in pairs(data.bullets) do
-        local player = data.players[v.owner]
+    for _, v in pairs(gamedata.bullets) do
+        local player = gamedata.players[v.owner]
         local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), player.color)
         shapes.drawPolygon(bulletPoly)
     end
     box:render()
-    renderHud(data.players[cid])
+    renderHud(gamedata.players[cid])
     profile.renderdt = os.epoch(profile.timeunit) - render0
 end
 
@@ -601,7 +603,7 @@ local directionVectors = {
 }
 
 local function updateKeys()
-    local mainPlayer = data.players[os.getComputerID()]
+    local mainPlayer = gamedata.players[os.getComputerID()]
     term.setCursorPos(1, 1)
     local updated = mainPlayer.boosting ~= heldKeys[keys.leftShift]
     mainPlayer.boosting = heldKeys[keys.leftShift]
@@ -646,8 +648,8 @@ local aimpos = vector.new(0, 0, 0)
 local view = vector.new(mx, my, 0)
 local targetView = vector.new(mx, my, 0)
 local viewVelocity = 5
-function data.updateViewpos()
-    local mainPlayer = data.players[os.getComputerID()]
+function gamedata.updateViewpos()
+    local mainPlayer = gamedata.players[os.getComputerID()]
     if mainPlayer.alive then
         if aiming then
             targetView = mainPlayer.pos + (aimpos - vector.new(tw, th / 2 * 3, 0)) * 0.40
@@ -656,7 +658,7 @@ function data.updateViewpos()
             targetView.y = mainPlayer.pos.y
         end
     elseif mainPlayer.spectating then
-        targetView = data.players[mainPlayer.spectating].pos
+        targetView = gamedata.players[mainPlayer.spectating].pos
     else
         targetView = mainPlayer.pos
     end
@@ -669,9 +671,9 @@ function data.updateViewpos()
     graphics.setViewCenter(view.x, view.y)
 end
 
-function data.inputLoop()
+function gamedata.inputLoop()
     while true do
-        local player = data.players[os.getComputerID()]
+        local player = gamedata.players[os.getComputerID()]
         local e, key, x, y = os.pullEvent()
         if e == "key" then
             if key == keys.t then
@@ -695,7 +697,7 @@ function data.inputLoop()
                 end
                 aimpos = vector.new(x * 2, y * 3, 0)
             elseif key == 1 then
-                if data.canFire(player) then
+                if gamedata.canFire(player) then
                     local network = require("libs.gamenetwork")
                     player.turretAngle = angle
                     network.queueGameEvent("player_fire_shot", {
@@ -714,20 +716,20 @@ function data.inputLoop()
 end
 
 local callbacks = {}
-function data.createCallback(time, func, rep)
+function gamedata.createCallback(time, func, rep)
     local id = os.startTimer(time)
     callbacks[id] = { func = func, time = time, rep = rep }
     return id
 end
 
-function data.callbackHandlers()
+function gamedata.callbackHandlers()
     while true do
         local _, id = os.pullEvent("timer")
         local info = callbacks[id]
         if info then
             local nid
             if info.rep then
-                nid = data.createCallback(info.time, info.func, info.rep)
+                nid = gamedata.createCallback(info.time, info.func, info.rep)
             end
             local ret = info.func()
             if info.rep then
@@ -738,19 +740,19 @@ function data.callbackHandlers()
     end
 end
 
-function data.startClientTicking()
-    data.createCallback(data.tickTime, function()
+function gamedata.startClientTicking()
+    gamedata.createCallback(gamedata.tickTime, function()
         local t0 = os.epoch(profile.timeunit)
         profile.collisiondt, profile.renderdt = 0, 0
-        for _, player in pairs(data.players) do
+        for _, player in pairs(gamedata.players) do
             tickPlayerWeapon(player)
             tickPlayerPolygons(player)
         end
-        for i in pairs(data.particles) do
-            data.tickParticle(i)
+        for i in pairs(gamedata.particles) do
+            gamedata.tickParticle(i)
         end
-        for i in pairs(data.bullets) do
-            data.tickBulletClient(i)
+        for i in pairs(gamedata.bullets) do
+            gamedata.tickBulletClient(i)
         end
         profile.framedt = os.epoch(profile.timeunit) - t0
         profile.frameCount = profile.frameCount + 1
@@ -760,9 +762,9 @@ function data.startClientTicking()
     end, true)
 end
 
-function data.startClientDrawing()
-    data.createCallback(data.tickTime, function()
-        data.updateViewpos()
+function gamedata.startClientDrawing()
+    gamedata.createCallback(gamedata.tickTime, function()
+        gamedata.updateViewpos()
         render()
         if profile.enableOverlay then
             profile.display(win)
@@ -773,7 +775,7 @@ function data.startClientDrawing()
 end
 
 local function tickBulletOnBulletCollisions()
-    local remainingBullets = sclone(data.bullets)
+    local remainingBullets = sclone(gamedata.bullets)
     local bulletPolys = {}
     for id0, bullet0 in pairs(remainingBullets) do
         remainingBullets[id0] = nil
@@ -795,17 +797,17 @@ local function tickBulletOnBulletCollisions()
     end
 end
 
-function data.startServerTicking()
-    data.createCallback(data.tickTime, function()
+function gamedata.startServerTicking()
+    gamedata.createCallback(gamedata.tickTime, function()
         local t0 = os.epoch(profile.timeunit)
         profile.collisionChecks, profile.edgeChecks = 0, 0
         profile.collisiondt, profile.renderdt = 0, 0
-        for _, player in pairs(data.players) do
-            data.tickPlayer(player)
+        for _, player in pairs(gamedata.players) do
+            gamedata.tickPlayer(player)
         end
         tickBulletOnBulletCollisions()
-        for i in pairs(data.bullets) do
-            data.tickBulletServer(i)
+        for i in pairs(gamedata.bullets) do
+            gamedata.tickBulletServer(i)
         end
         profile.framedt = os.epoch(profile.timeunit) - t0
         profile.frameCount = profile.frameCount + 1
@@ -816,4 +818,4 @@ function data.startServerTicking()
     end, true)
 end
 
-return data
+return gamedata

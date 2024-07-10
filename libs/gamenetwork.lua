@@ -1,7 +1,5 @@
 local network  = {}
 local gamedata = require "libs.gamedata"
-local map      = require "libs.map"
-
 
 local hostid
 local cid      = os.getComputerID()

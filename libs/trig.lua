@@ -1,16 +1,18 @@
-local function round(n)
+local trig = {}
+
+function trig.round(n)
     return math.floor(n + 0.5)
 end
 
 local sineCache = {}
-local function sin(deg)
-    deg = round(deg) % 360
+function trig.sin(deg)
+    deg = trig.round(deg) % 360
     return sineCache[deg]
 end
 
 local cosCache = {}
-local function cos(deg)
-    deg = round(deg) % 360
+function trig.cos(deg)
+    deg = trig.round(deg) % 360
     return cosCache[deg]
 end
 
@@ -20,13 +22,8 @@ for i = 0, 360 do
 end
 
 local atanCache = {}
-local function atan(n)
+function trig.atan(n)
     return math.deg(math.atan(n))
 end
 
-return {
-    sin = sin,
-    cos = cos,
-    atan = atan,
-    round = round
-}
+return trig

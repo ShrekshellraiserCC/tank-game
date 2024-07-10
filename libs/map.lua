@@ -1,3 +1,5 @@
+local map = {}
+
 local shapes = require "libs.shapes"
 local palette = require "libs.palette"
 
@@ -85,7 +87,7 @@ local function parsePolygon(loaded, part, i, desc)
 end
 
 ---@return LoadedMap
-local function loadMap(s)
+function map.loadMap(s)
     local json = s
     if type(json) == "string" then
         json = textutils.unserialise(s)
@@ -134,26 +136,19 @@ local function readFile(fn)
     return s
 end
 
-local function loadMapFile(fn)
+function map.loadMapFile(fn)
     local s = readFile(fn)
-    return loadMap(assert(textutils.unserializeJSON(s)) --[[@as table]])
+    return map.loadMap(assert(textutils.unserializeJSON(s)) --[[@as table]])
 end
 
----@param map LoadedMap
-local function renderMap(map)
-    for _, v in pairs(map.walls) do
+---@param m LoadedMap
+function map.renderMap(m)
+    for _, v in pairs(m.walls) do
         shapes.drawPolygon(v)
     end
-    for _, v in pairs(map.doors) do
+    for _, v in pairs(m.doors) do
         shapes.drawPolygon(v)
     end
 end
 
-
-
-return {
-    loadMap = loadMap,
-    readFile = readFile,
-    loadMapFile = loadMapFile,
-    renderMap = renderMap
-}
+return map
