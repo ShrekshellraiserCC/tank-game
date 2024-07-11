@@ -1,11 +1,11 @@
-local gamedata    = {}
+local gamedata                  = {}
 
-local palette     = require "libs.palette"
-local shapes      = require "libs.shapes"
-local map         = require "libs.map"
-local trig        = require "libs.trig"
-local profile     = require "libs.gameprofiling"
-local graphics    = require "libs.graphics"
+local palette                   = require "libs.palette"
+local shapes                    = require "libs.shapes"
+local map                       = require "libs.map"
+local trig                      = require "libs.trig"
+local profile                   = require "libs.gameprofiling"
+local graphics                  = require "libs.graphics"
 
 ---@class Team
 ---@field color color
@@ -14,21 +14,26 @@ local graphics    = require "libs.graphics"
 
 ---@alias TeamID "red"|"blue"
 
-local friction    = 0.99
+local friction                  = 0.99
 
-gamedata.tickTime = 0.05
+gamedata.tickTime               = 0.05
+
+local redTankTextureData        = map.readFile("textures/red_tank.tex")
+local redTankTurretTextureData  = map.readFile("textures/red_tank_turret.tex")
+local blueTankTextureData       = map.readFile("textures/blue_tank.tex")
+local blueTankTurretTextureData = map.readFile("textures/blue_tank_turret.tex")
 
 ---@type table<TeamID,Team>
-gamedata.teams    = {
+gamedata.teams                  = {
     red = {
         color = palette.colors.red,
-        tankTexture = shapes.loadTexture("textures/red_tank.tex"),
-        turretTexture = shapes.loadTexture("textures/red_tank_turret.tex"),
+        tankTexture = shapes.parseTexture(redTankTextureData),
+        turretTexture = shapes.parseTexture(redTankTurretTextureData),
     },
     blue = {
         color = palette.colors.blue,
-        tankTexture = shapes.loadTexture("textures/blue_tank.tex"),
-        turretTexture = shapes.loadTexture("textures/blue_tank_turret.tex"),
+        tankTexture = shapes.parseTexture(blueTankTextureData),
+        turretTexture = shapes.parseTexture(blueTankTurretTextureData),
     }
 }
 
@@ -43,7 +48,7 @@ gamedata.teams    = {
 ---@alias ClassID "base" | "heavy"
 
 ---@type table<ClassID,Class>
-gamedata.classes  = {
+gamedata.classes                = {
     base = {
         weapon = {
             shotCapacity = 3,
@@ -150,10 +155,10 @@ gamedata.classes  = {
 ---@field spectating integer?
 
 ---@type table<integer,Player>
-gamedata.players  = {}
+gamedata.players                = {}
 
 ---@type table<integer,Bullet>
-gamedata.bullets  = {}
+gamedata.bullets                = {}
 
 
 ---@class Particle

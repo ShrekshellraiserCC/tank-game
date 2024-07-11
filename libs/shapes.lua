@@ -130,7 +130,7 @@ end
 
 ---Apply the given rotation, position, and scale to the polygon's points, then generates the triangles
 ---@param poly Polygon
-local function calculatePolygonTriangles(poly)
+function shapes.calculatePolygonTriangles(poly)
     poly.apoints = {}
     for i, p in ipairs(poly.points) do
         local x, y = p[1] * poly.scale, p[2] * poly.scale
@@ -149,10 +149,10 @@ local function calculatePolygonTriangles(poly)
 end
 
 ---@type table<color,Texture>
-local colorTextures = {}
+shapes.colorTextures = {}
 for _, v in pairs(colors) do
     if type(v) == "number" then
-        colorTextures[v] = { data = { { v } }, w = 1, h = 1 }
+        shapes.colorTextures[v] = { data = { { v } }, w = 1, h = 1 }
     end
 end
 
@@ -195,7 +195,7 @@ function shapes.polygon(pos, relPoints, color)
     if not poly.points[1][3] then
         generatePolygonUVs(poly)
     end
-    calculatePolygonTriangles(poly)
+    shapes.calculatePolygonTriangles(poly)
     return poly
 end
 

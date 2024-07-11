@@ -129,7 +129,7 @@ function map.loadMap(s)
     return loadedMap
 end
 
-local function readFile(fn)
+function map.readFile(fn)
     local f = assert(fs.open(fn, "r"))
     local s = f.readAll()
     f.close()
@@ -137,7 +137,7 @@ local function readFile(fn)
 end
 
 function map.loadMapFile(fn)
-    local s = readFile(fn)
+    local s = map.readFile(fn)
     return map.loadMap(assert(textutils.unserializeJSON(s)) --[[@as table]])
 end
 
