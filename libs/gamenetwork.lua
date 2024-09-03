@@ -1,10 +1,12 @@
-local network  = {}
-local gamedata = require "libs.gamedata"
+local network      = {}
+local gamedata     = require "libs.gamedata"
+local map          = require "libs.map"
+local gamesettings = require "libs.gamesettings"
 
 local hostid
-local cid      = os.getComputerID()
+local cid          = os.getComputerID()
 
-local PROTOCOL = "shrekin_tanks"
+local PROTOCOL     = "shrekin_tanks"
 
 rednet.open(peripheral.getName(peripheral.find("modem")))
 
@@ -43,7 +45,9 @@ end
 local validClientCreatedEvents = {
     player_movement_update = true,
     player_fire_shot = true,
-    player_aim = true
+    player_aim = true,
+    player_set_team = true,
+    player_set_class = true
 }
 
 local clientGameEventHandlers = {
@@ -66,6 +70,16 @@ local clientGameEventHandlers = {
         local player = gamedata.players[d.id]
         player.turretAngle = d.angle
     end,
+    player_set_team = function(d)
+        local player = gamedata.players[d.id]
+        gamedata.setPlayerTeam(player, d.team)
+        gamedata.killPlayer(player)
+    end,
+    player_set_class = function(d)
+        local player = gamedata.players[d.id]
+        gamedata.setPlayerClass(player, d.class)
+        gamedata.killPlayer(player)
+    end,
     -- Events created by server
     bullet_bounce = function(d)
         local bullet = gamedata.bullets[d.id]
@@ -85,24 +99,27 @@ local clientGameEventHandlers = {
         local player = gamedata.players[d.id]
         gamedata.respawnPlayer(player)
     end,
-    player_set_team = function(d)
-        local player = gamedata.players[d.id]
-        gamedata.setPlayerTeam(player, d.team)
-    end,
-    player_set_class = function(d)
-        local player = gamedata.players[d.id]
-        gamedata.setPlayerClass(player, d.class)
-    end,
     player_died = function(d)
         local player = gamedata.players[d.id]
-        player.alive = false
-        gamedata.explosion(player.pos)
-        if gamedata.bullets[d.bid] then
+        if cid == d.id then
+            if d.bid then
+                gamedata.mode = "KILL_CAM"
+            else
+                gamedata.mode = "SPECTATING"
+            end
+        end
+        player.willRespawnAt = player.willRespawnAt or d.willRespawnAt
+        if player.alive then
+            player.alive = false
+            gamedata.explosion(player.pos)
+            player.deaths = player.deaths + 1
+        end
+        if d.bid and gamedata.bullets[d.bid] then
             local owner = gamedata.bullets[d.bid].owner
             gamedata.killer = gamedata.players[owner]
             player.spectating = owner
+            gamedata.bullets[d.bid] = nil
         end
-        gamedata.bullets[d.bid] = nil
     end,
     game_tick = function(d)
         if d.players then
@@ -238,7 +255,9 @@ local function serverHandleMessage(sender, message)
         rednet.send(sender, {
             type = "join",
             state = true,
-            players = serializePlayers()
+            players = serializePlayers(),
+            map = gamedata.mapData,
+            bullets = gamedata.bullets,
         }, PROTOCOL)
         network.queueGameEvent("player_join", { id = sender, name = message.username })
         network.queueGameEvent("player_set_team", { id = sender, team = sender == 2 and "red" or "blue" })
@@ -318,6 +337,8 @@ local function connectToServer(username)
                 gamedata.players[k] = unserializePlayer(v)
                 print("Found player", k)
             end
+            gamedata.mapData = message.map
+            gamedata.map = map.loadMap(message.map)
             return message.state
         end
     end

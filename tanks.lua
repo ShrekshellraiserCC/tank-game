@@ -11,14 +11,14 @@ graphics.setBox(box)
 
 palette.apply(win)
 
-
 gamedata.setupRendering(win, box)
 
 local ok, err = xpcall(function()
     if arg[1] == "server" then
         network.startServer("pleasework")
     else
-        network.startClient("eeee")
+        print("Please enter a username: ")
+        network.startClient(read() --[[@as string]])
     end
 end, debug.traceback)
 

@@ -9,10 +9,12 @@ local palette = require "libs.palette"
 ---@field walls table
 ---@field doors table?
 ---@field textures table?
+---@field spawns table
 
 ---@class LoadedMap : SavedMap
 ---@field walls Polygon[]
 ---@field textures table<string,Texture>
+---@field spawns {red: integer[],blue: integer[]}
 
 ---@param v any
 ---@param s string
@@ -105,7 +107,8 @@ function map.loadMap(s)
         description = json.description,
         walls = {},
         doors = {},
-        textures = {}
+        textures = {},
+        spawns = {}
     }
     for k, v in pairs(json.textures) do
         if fs.exists(k) then
@@ -126,6 +129,8 @@ function map.loadMap(s)
         passert(v.team, "door", i, "Door is missing a team!")
         loadedMap.doors[i].team = v.team
     end
+    loadedMap.spawns = json.spawns
+
     return loadedMap
 end
 

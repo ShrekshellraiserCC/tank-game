@@ -6,6 +6,7 @@ local map                       = require "libs.map"
 local trig                      = require "libs.trig"
 local profile                   = require "libs.gameprofiling"
 local graphics                  = require "libs.graphics"
+local gamesettings              = require "libs.gamesettings"
 
 ---@class Team
 ---@field color color
@@ -153,6 +154,9 @@ gamedata.classes                = {
 ---@field teamValid boolean?
 ---@field name string
 ---@field spectating integer?
+---@field kills number
+---@field deaths number
+---@field willRespawnAt number?
 
 ---@type table<integer,Player>
 gamedata.players                = {}
@@ -160,6 +164,9 @@ gamedata.players                = {}
 ---@type table<integer,Bullet>
 gamedata.bullets                = {}
 
+---@alias GameMode "SPECTATING"|"PLAYING"|"KILL_CAM"|"MENU"
+---@type GameMode
+gamedata.mode                   = "SPECTATING"
 
 ---@class Particle
 ---@field pos Vector
@@ -169,7 +176,16 @@ gamedata.bullets                = {}
 ---@field creation number
 
 ---@type table<number,Particle>
-gamedata.particles = {}
+gamedata.particles              = {}
+
+local tw, th                    = term.getSize()
+
+local midpx, midpy              = tw, th / 2 * 3
+local aiming                    = false
+local aimpos                    = vector.new(0, 0, 0)
+local view                      = vector.new(midpx, midpy, 0)
+local targetView                = vector.new(midpx, midpy, 0)
+local viewVelocity              = 5
 
 ---@param player Player
 function gamedata.createPlayerPolys(player)
@@ -222,8 +238,16 @@ end
 ---@param player Player
 function gamedata.respawnPlayer(player)
     player.alive = true
-    player.pos = vector.new(30, 30, 0)
+    local possibleSpawns = gamedata.map.spawns[player.team]
+    local spawn = possibleSpawns[math.random(1, #possibleSpawns)]
+    player.pos = vector.new(spawn[1], spawn[2], 0)
     player.angle = 0
+    if player.id == os.computerID() then
+        gamedata.mode = "PLAYING"
+        view.x = spawn[1]
+        view.y = spawn[2]
+    end
+    player.willRespawnAt = nil
 end
 
 ---@param id integer
@@ -240,7 +264,9 @@ function gamedata.newPlayer(id, name)
         boosting = false,
         alive = false,
         id = id,
-        name = name
+        name = name,
+        kills = 0,
+        deaths = 0,
     }
     gamedata.players[id] = player
     return player
@@ -317,6 +343,12 @@ function gamedata.tickPlayer(player)
         player.pos.y = player.pos.y + translation.y
 
         tickPlayerWeapon(player)
+    else
+        local network = require "libs.gamenetwork"
+        if player.willRespawnAt and player.willRespawnAt < os.epoch("utc") then
+            player.willRespawnAt = nil
+            network.queueGameEvent("player_respawn", { id = player.id })
+        end
     end
 end
 
@@ -362,6 +394,14 @@ function gamedata.tickBulletClient(i)
 
     local player = gamedata.players[bullet.owner]
     player.weapon.bulletParticleTick(player, bullet)
+end
+
+---@param player Player
+---@param bid integer?
+function gamedata.killPlayer(player, bid)
+    local network = require "libs.gamenetwork"
+    network.queueGameEvent("player_died",
+        { id = player.id, bid = bid, willRespawnAt = os.epoch('utc') + gamesettings.respawnTimer })
 end
 
 ---@param i integer
@@ -412,7 +452,7 @@ function gamedata.tickBulletServer(i)
                 local colliding = false
                 colliding = shapes.polygonCollision(bulletPoly, v.poly, translation).intersect
                 if colliding then
-                    network.queueGameEvent("player_died", { id = v.id, bid = i })
+                    gamedata.killPlayer(v, bullet.id)
                 end
             end
         end
@@ -515,8 +555,6 @@ end
 ---@field health integer
 ---@field ticksToLive integer
 
-local tw, th = term.getSize()
-
 
 --- Client connection process
 -- 1. Client downloads map
@@ -524,6 +562,7 @@ local tw, th = term.getSize()
 -- 3. Client fetches bullet/etc information
 -- 4. Client is connected and starts listening for state updates
 
+---@type Window
 local win, box
 ---@param window Window
 ---@param pixelbox table
@@ -543,6 +582,119 @@ end
 
 ---@type Player?
 gamedata.killer = nil
+
+---@alias MenuMode "TEAM_SELECT"|"CLASS_SELECT"
+---@type MenuMode
+gamedata.menuMode = "TEAM_SELECT"
+
+local function drawRectangle(x, y, w, h, color)
+    local old = win.getBackgroundColor()
+    win.setBackgroundColor(color)
+    win.setCursorPos(x, y)
+    local horiz = (" "):rep(w)
+    win.write(horiz)
+    win.setCursorPos(x, y + h - 1)
+    win.write(horiz)
+    for i = 1, h do
+        win.setCursorPos(x, y + i - 1)
+        win.write(" ")
+        win.setCursorPos(x + w - 1, y + i - 1)
+        win.write(" ")
+    end
+    win.setBackgroundColor(old)
+end
+
+---@type table<TeamID,table<ClassID,Player>>
+local dummyPlayers = {}
+
+for teamid, team in pairs(gamedata.teams) do
+    dummyPlayers[teamid] = {}
+    for classid, class in pairs(gamedata.classes) do
+        local player = gamedata.newPlayer(-1, "DUMMY")
+        player.alive = true
+        gamedata.players[-1] = nil
+
+        gamedata.setPlayerClass(player, classid)
+        gamedata.setPlayerTeam(player, teamid)
+        dummyPlayers[teamid][classid] = player
+    end
+end
+
+---@param y number
+---@param str string
+---@param w integer
+---@return number x
+---@return number y
+---@return string s
+local function centerText(y, str, w, offx)
+    return (w - #str) / 2 + (offx or 0), y, str
+end
+
+local function write(x, y, t)
+    win.setCursorPos(x, y)
+    win.write(t)
+end
+
+---@type string[]
+local classList = {}
+for classid in pairs(gamedata.classes) do
+    classList[#classList + 1] = classid
+end
+local classCount = #classList
+
+local _, redDummyTank = next(dummyPlayers.red)
+local _, blueDummyTank = next(dummyPlayers.blue)
+local function renderMenu()
+    local hw = tw / 2
+    if gamedata.menuMode == "TEAM_SELECT" then
+        win.clear()
+        redDummyTank.pos = vector.new(midpx / 2, midpy, 0)
+        redDummyTank.angle = (redDummyTank.angle + 1) % 360
+        redDummyTank.turretAngle = (redDummyTank.turretAngle - 1) % 360
+        tickPlayerPolygons(redDummyTank)
+        blueDummyTank.pos = vector.new(midpx * 3 / 2, midpy, 0)
+        blueDummyTank.angle = (blueDummyTank.angle + 1) % 360
+        blueDummyTank.turretAngle = (blueDummyTank.turretAngle - 1) % 360
+        tickPlayerPolygons(blueDummyTank)
+        renderPlayer(redDummyTank)
+        renderPlayer(blueDummyTank)
+        box:render()
+        write(centerText(1, "Team Selection", tw))
+        win.setTextColor(palette.colors.red)
+        write(centerText(3, "Red", tw / 2))
+        drawRectangle(1, 2, hw, th - 1, palette.colors.red)
+        win.setTextColor(palette.colors.blue)
+        write(centerText(3, "Blue", tw / 2, tw / 2 + 1))
+        drawRectangle(hw + 1, 2, hw, th - 1, palette.colors.blue)
+        win.setTextColor(palette.colors.white)
+    else
+        local team = gamedata.players[os.computerID()].team
+        if not team then
+            gamedata.menuMode = "TEAM_SELECT"
+            return
+        end
+        win.clear()
+        local buttonPixWidth = tw * 2 / classCount
+        for classnumber, classid in ipairs(classList) do
+            local player = dummyPlayers[team][classid]
+            player.pos = vector.new(buttonPixWidth * (classnumber - 0.5) + 1, midpy, 0)
+            player.angle = (player.angle + 1) % 360
+            player.turretAngle = (player.turretAngle - 1) % 360
+            tickPlayerPolygons(player)
+            renderPlayer(player)
+        end
+        box:render()
+        local buttonWidth = tw / classCount
+        local color = gamedata.teams[team].color
+        write(centerText(1, "Class Selection", tw))
+        for classnumber, classid in ipairs(classList) do
+            local x = buttonWidth * (classnumber - 1) + 1
+            drawRectangle(x, 2, buttonWidth, th - 1, color)
+            write(centerText(3, classid, buttonWidth, x))
+        end
+    end
+end
+
 
 ---@param player Player
 local function renderHud(player)
@@ -567,11 +719,15 @@ local function renderHud(player)
             win.setCursorPos(x + 2, y + 1)
             win.write(str)
         end
-    elseif gamedata.killer then
+    elseif gamedata.mode == "KILL_CAM" and gamedata.killer then
         local w, h = win.getSize()
         local str = ("Killed by %s"):format(gamedata.killer.name)
         win.setCursorPos((w - #str) / 2, h - 2)
         win.write(str)
+    end
+    local time = os.epoch("utc")
+    if not player.alive and player.willRespawnAt and player.willRespawnAt > time then
+        write(centerText(2, ("Respawning in %.1fs"):format((player.willRespawnAt - time) / 1000), tw))
     end
 end
 
@@ -580,21 +736,29 @@ local function render()
     local render0 = os.epoch(profile.timeunit)
     win.setVisible(false)
     box:clear(colors.black)
-    map.renderMap(gamedata.map)
-    for i, v in pairs(gamedata.particles) do
-        graphics.setPixel(v.pos.x, v.pos.y, v.color)
+    if gamedata.mode ~= "MENU" then
+        map.renderMap(gamedata.map)
+        for i, v in pairs(gamedata.particles) do
+            graphics.setPixel(v.pos.x, v.pos.y, v.color)
+        end
+        for _, v in pairs(gamedata.players) do
+            renderPlayer(v)
+        end
+        for _, v in pairs(gamedata.bullets) do
+            local player = gamedata.players[v.owner]
+            local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), player.color)
+            shapes.drawPolygon(bulletPoly)
+        end
+        box:render()
+        renderHud(gamedata.players[cid])
+        profile.renderdt = os.epoch(profile.timeunit) - render0
+        if profile.enableOverlay then
+            profile.display(win)
+        end
+    else
+        renderMenu()
     end
-    for _, v in pairs(gamedata.players) do
-        renderPlayer(v)
-    end
-    for _, v in pairs(gamedata.bullets) do
-        local player = gamedata.players[v.owner]
-        local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), player.color)
-        shapes.drawPolygon(bulletPoly)
-    end
-    box:render()
-    renderHud(gamedata.players[cid])
-    profile.renderdt = os.epoch(profile.timeunit) - render0
+    win.setVisible(true)
 end
 
 --- VIEW POS CODE
@@ -647,74 +811,147 @@ local function updateKeys()
     end
 end
 
-local mx, my = tw, th / 2 * 3
-local aiming = false
-local aimpos = vector.new(0, 0, 0)
-local view = vector.new(mx, my, 0)
-local targetView = vector.new(mx, my, 0)
-local viewVelocity = 5
 function gamedata.updateViewpos()
-    local mainPlayer = gamedata.players[os.getComputerID()]
-    if mainPlayer.alive then
-        if aiming then
-            targetView = mainPlayer.pos + (aimpos - vector.new(tw, th / 2 * 3, 0)) * 0.40
+    if gamedata.mode ~= "MENU" then
+        local mainPlayer = gamedata.players[os.getComputerID()]
+        if mainPlayer.alive then
+            if aiming then
+                targetView = mainPlayer.pos + (aimpos - vector.new(tw, th / 2 * 3, 0)) * 0.40
+            else
+                targetView.x = mainPlayer.pos.x
+                targetView.y = mainPlayer.pos.y
+            end
+        elseif mainPlayer.spectating then
+            targetView = gamedata.players[mainPlayer.spectating].pos
         else
-            targetView.x = mainPlayer.pos.x
-            targetView.y = mainPlayer.pos.y
+            targetView = mainPlayer.pos
         end
-    elseif mainPlayer.spectating then
-        targetView = gamedata.players[mainPlayer.spectating].pos
+        ---@type Vector
+        local dview = targetView - view
+        if dview:length() > viewVelocity then
+            dview = dview:normalize() * viewVelocity
+        end
+        view = view + dview
+        graphics.setViewCenter(view.x, view.y)
     else
-        targetView = mainPlayer.pos
+        graphics.setViewCorner(0, 0)
     end
-    ---@type Vector
-    local dview = targetView - view
-    if dview:length() > viewVelocity then
-        dview = dview:normalize() * viewVelocity
+end
+
+local function cycleSpectating()
+    local player = gamedata.players[os.getComputerID()]
+    local spectating = player.spectating
+    spectating = next(gamedata.players, spectating)
+    if not spectating then
+        spectating = next(gamedata.players)
     end
-    view = view + dview
-    graphics.setViewCenter(view.x, view.y)
+end
+
+local function handleMenuClick(x, y)
+    local buttonWidth = tw / classCount
+    for i, classid in ipairs(classList) do
+        if x < buttonWidth * i + 1 then
+            return i, classid
+        end
+    end
 end
 
 function gamedata.inputLoop()
+    local network = require "libs.gamenetwork"
     while true do
         local player = gamedata.players[os.getComputerID()]
         local e, key, x, y = os.pullEvent()
-        if e == "key" then
-            if key == keys.t then
-                profile.enableOverlay = not profile.enableOverlay
-            end
-            heldKeys[key] = true
-            updateKeys()
-        elseif e == "key_up" then
-            heldKeys[key] = nil
-            updateKeys()
-        elseif e == "mouse_click" or e == "mouse_drag" then
-            local tankposx, tankposy = graphics.worldToScreenPos(player.pos.x, player.pos.y)
-            local angle = graphics.calculateAngle(tankposx, tankposy, x * 2, y * 3)
-            if key == 2 then
-                -- right click to aim
-                aiming = true
-                if player.turretAngle ~= angle then
-                    local network = require("libs.gamenetwork")
-                    network.queueGameEvent("player_aim", { id = player.id, angle = angle })
-                    player.turretAngle = angle
+        if gamedata.mode ~= "MENU" then
+            if e == "key" then
+                if key == keys.t then
+                    profile.enableOverlay = not profile.enableOverlay
                 end
-                aimpos = vector.new(x * 2, y * 3, 0)
-            elseif key == 1 then
-                if gamedata.canFire(player) then
-                    local network = require("libs.gamenetwork")
-                    player.turretAngle = angle
-                    network.queueGameEvent("player_fire_shot", {
-                        id = player.id,
-                        angle = angle
-                    })
+                heldKeys[key] = true
+                updateKeys()
+            elseif e == "key_up" then
+                heldKeys[key] = nil
+                updateKeys()
+            elseif e == "mouse_click" or e == "mouse_drag" then
+                local tankposx, tankposy = graphics.worldToScreenPos(player.pos.x, player.pos.y)
+                local angle = graphics.calculateAngle(tankposx, tankposy, x * 2, y * 3)
+                if key == 2 then
+                    -- right click to aim
+                    aiming = true
+                    if player.turretAngle ~= angle then
+                        network.queueGameEvent("player_aim", { id = player.id, angle = angle })
+                        player.turretAngle = angle
+                    end
+                    aimpos = vector.new(x * 2, y * 3, 0)
+                elseif key == 1 then
+                    if gamedata.canFire(player) then
+                        player.turretAngle = angle
+                        network.queueGameEvent("player_fire_shot", {
+                            id = player.id,
+                            angle = angle
+                        })
+                        aiming = false
+                    end
+                    aimpos = vector.new(x * 2, y * 3, 0)
                 end
-                aimpos = vector.new(x * 2, y * 3, 0)
+            elseif e == "mouse_up" then
+                if key == 2 then
+                    aiming = false
+                end
             end
-        elseif e == "mouse_up" then
-            if key == 2 then
-                aiming = false
+            if gamedata.mode == "SPECTATING" then
+                if e == "mouse_click" then
+                    cycleSpectating()
+                end
+            end
+        else
+            if gamedata.menuMode == "TEAM_SELECT" then
+                if e == "mouse_click" then
+                    if x < tw / 2 then
+                        network.queueGameEvent("player_set_team", { id = player.id, team = "red" })
+                    else
+                        network.queueGameEvent("player_set_team", { id = player.id, team = "blue" })
+                    end
+                    gamedata.mode = "PLAYING"
+                elseif e == "char" then
+                    if key == "." then
+                        if player.alive then
+                            gamedata.mode = "PLAYING"
+                        else
+                            gamedata.mode = "SPECTATING"
+                        end
+                    elseif key == "," then
+                        gamedata.menuMode = "CLASS_SELECT"
+                    end
+                end
+            else
+                if e == "mouse_click" then
+                    local _, classid = handleMenuClick(x, y)
+                    if classid then
+                        network.queueGameEvent("player_set_class", { id = player.id, class = classid })
+                        gamedata.mode = "SPECTATING"
+                    end
+                elseif e == "char" then
+                    if key == "." then
+                        gamedata.menuMode = "TEAM_SELECT"
+                    elseif key == "," then
+                        if player.alive then
+                            gamedata.mode = "PLAYING"
+                        else
+                            gamedata.mode = "SPECTATING"
+                        end
+                    end
+                end
+            end
+        end
+        if gamedata.mode ~= "MENU" then
+            if e == "char" then
+                if key == '.' then
+                    gamedata.mode = "MENU"
+                    gamedata.menuMode = "TEAM_SELECT"
+                elseif key == "," then
+                    gamedata.mode = "MENU"
+                    gamedata.menuMode = "CLASS_SELECT"
+                end
             end
         end
     end
@@ -737,8 +974,8 @@ function gamedata.callbackHandlers()
                 nid = gamedata.createCallback(info.time, info.func, info.rep)
             end
             local ret = info.func()
-            if info.rep then
-                callbacks[nid].rep = ret
+            if info.rep and not ret then
+                callbacks[nid] = nil
             end
             callbacks[id] = nil
         end
@@ -771,10 +1008,6 @@ function gamedata.startClientDrawing()
     gamedata.createCallback(gamedata.tickTime, function()
         gamedata.updateViewpos()
         render()
-        if profile.enableOverlay then
-            profile.display(win)
-        end
-        win.setVisible(true)
         return true
     end, true)
 end

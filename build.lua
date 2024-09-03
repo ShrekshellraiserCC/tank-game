@@ -31,6 +31,8 @@ local fileCacheStr = "(.+= *)map.readFile%(\"([%a%d%p]+)\"%)"
 ---@field content string
 ---@field firstline string
 ---@field requires table<string,string> module,module
+---@field temporary boolean?
+---@field permanent boolean?
 
 ---@type RequiredFile[]
 local requiredFiles = {}
@@ -124,7 +126,7 @@ local moduleIncludeOrder = {}
 -- https://en.wikipedia.org/wiki/Topological_sorting#Depth-first_search
 ---@param module RequiredFile
 local function visit(module)
-    if module.permanant then
+    if module.permanent then
         return
     elseif module.temporary then
         print("Warning: Cyclic dependency tree")
@@ -143,13 +145,13 @@ local function visit(module)
     end
 
     module.temporary = nil
-    module.permanant = true
+    module.permanent = true
     table.insert(moduleIncludeOrder, module)
 end
 
 local function getUnmarked()
     for k, v in pairs(requiredFiles) do
-        if not v.permanant then
+        if not v.permanent then
             return v
         end
     end
@@ -163,7 +165,7 @@ while unmarked do
 end
 
 for k, v in pairs(requiredFiles) do
-    v.permanant = nil
+    v.permanent = nil
 end
 
 local function buildFile(fn)

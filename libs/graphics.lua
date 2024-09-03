@@ -18,17 +18,15 @@ end
 
 local tw, th = term.getSize()
 local mx, my = tw, th / 2 * 3
+local cornerx, cornery = 0, 0
 local cx, cy = mx, my
-local xmin = cx - mx
-local xmax = cx + mx
-local ymin = cy - my
-local ymax = cy + my
 function graphics.setViewCenter(x, y)
     cx, cy = x, y
-    xmin = cx - mx
-    xmax = cx + mx
-    ymin = cy - mx
-    ymax = cy + mx
+    cornerx, cornery = cx - mx, cy - my
+end
+
+function graphics.setViewCorner(x, y)
+    cornerx, cornery = x, y
 end
 
 local function slope(x1, y1, x2, y2)
@@ -122,7 +120,7 @@ end
 ---@return integer
 ---@return integer
 function graphics.screenToWorldPos(x, y)
-    return trig.round(x + cx - mx), trig.round(y + cy - my)
+    return trig.round(x + cornerx), trig.round(y + cornery)
 end
 
 ---Convert a coordinate in world to screen position (in pixels)
@@ -131,12 +129,12 @@ end
 ---@return integer
 ---@return integer
 function graphics.worldToScreenPos(x, y)
-    return trig.round(x - cx + mx), trig.round(y - cy + my)
+    return trig.round(x - cornerx), trig.round(y - cornery)
 end
 
 ---@param color color
 function graphics.setPixel(x, y, color)
-    local ax, ay = trig.round(x - cx + mx), trig.round(y - cy + my)
+    local ax, ay = trig.round(x - cornerx), trig.round(y - cornery)
     if ax < 1 or ay < 1 or ax > tw * 2 or ay > th * 3 then
         return
     end
