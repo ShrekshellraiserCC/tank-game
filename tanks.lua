@@ -24,4 +24,6 @@ end, debug.traceback)
 
 term.clear()
 term.setCursorPos(1, 1)
-print(err)
+if not ok then
+    print(err)
+end

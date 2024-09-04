@@ -4,7 +4,7 @@ local palette                   = require "libs.palette"
 local shapes                    = require "libs.shapes"
 local map                       = require "libs.map"
 local trig                      = require "libs.trig"
-local profile                   = require "libs.gameprofiling"
+local profile                   = require "libs.debugoverlay"
 local graphics                  = require "libs.graphics"
 local gamesettings              = require "libs.gamesettings"
 
@@ -210,6 +210,33 @@ function gamedata.setPlayerTeam(player, team)
     end
 end
 
+---@return number red
+---@return number blue
+---@return number spectator
+function gamedata.getTeamCounts()
+    local redCount = 0
+    local blueCount = 0
+    local spectatorCount = 0
+    for k, v in pairs(gamedata.players) do
+        if v.team == "red" then
+            redCount = redCount + 1
+        elseif v.team == "blue" then
+            blueCount = blueCount + 1
+        else
+            spectatorCount = spectatorCount + 1
+        end
+    end
+    return redCount, blueCount, spectatorCount
+end
+
+function gamedata.getUnbalancedTeam()
+    local red, blue = gamedata.getTeamCounts()
+    if red < blue then
+        return "red"
+    end
+    return "blue"
+end
+
 local function sclone(t)
     local nt = {}
     for k, v in pairs(t) do
@@ -317,7 +344,6 @@ function gamedata.tickPlayer(player)
         tickPlayerPolygons(player)
         local playerPoly = player.poly
 
-        local collision0 = os.epoch(profile.timeunit)
         for _, v in pairs(gamedata.map.walls) do
             if shapes.polyOverlap(playerPoly, v, 20) then
                 local r = shapes.polygonCollision(playerPoly, v, translation)
@@ -337,7 +363,6 @@ function gamedata.tickPlayer(player)
                 end
             end
         end
-        profile.collisiondt = profile.collisiondt + os.epoch(profile.timeunit) - collision0
 
         player.pos.x = player.pos.x + translation.x
         player.pos.y = player.pos.y + translation.y
@@ -418,8 +443,6 @@ function gamedata.tickBulletServer(i)
 
     local bulletPoly = shapes.polygon(bullet.pos, shapes.getRectanglePointsCorner(2, 2), colors.white)
 
-    local collision0 = os.epoch(profile.timeunit)
-
     local collisionOccured = false
     local function collide(poly)
         if shapes.polyOverlap(bulletPoly, poly, 20) then
@@ -457,7 +480,6 @@ function gamedata.tickBulletServer(i)
             end
         end
     end
-    profile.collisiondt = profile.collisiondt + os.epoch(profile.timeunit) - collision0
     bullet.pos.x = bullet.pos.x + translation.x
     bullet.pos.y = bullet.pos.y + translation.y
 
@@ -702,6 +724,8 @@ local function renderHud(player)
     -- win.setBackgroundColor(colors.black)
     -- win.setTextColor(colors.white)
     -- win.clearLine()
+    local network = require("libs.gamenetwork")
+    local timingOut = network.lastMessage + gamesettings.clientTimeoutWarning < os.epoch("utc")
     if player.alive then
         local weapon = player.weapon
         local x, y = graphics.worldToScreenPos(player.pos.x, player.pos.y)
@@ -729,8 +753,17 @@ local function renderHud(player)
     if not player.alive and player.willRespawnAt and player.willRespawnAt > time then
         write(centerText(2, ("Respawning in %.1fs"):format((player.willRespawnAt - time) / 1000), tw))
     end
+    if timingOut then
+        local ot = win.getTextColor()
+        win.setTextColor(colors.red)
+        local ts = (("Lost Connection. Disconnecting in %.1fs"):format((network.lastMessage + gamesettings.clientTimeout - os.epoch("utc")) / 1000))
+        win.setCursorPos(tw - #ts, 1)
+        win.write(ts)
+        win.setTextColor(ot)
+    end
 end
 
+local renderTimeString = ("Render: %%d%s"):format(profile.timelabel)
 local cid = os.getComputerID()
 local function render()
     local render0 = os.epoch(profile.timeunit)
@@ -751,7 +784,7 @@ local function render()
         end
         box:render()
         renderHud(gamedata.players[cid])
-        profile.renderdt = os.epoch(profile.timeunit) - render0
+        profile.set(renderTimeString, os.epoch(profile.timeunit) - render0)
         if profile.enableOverlay then
             profile.display(win)
         end
@@ -877,7 +910,7 @@ function gamedata.inputLoop()
                 if key == 2 then
                     -- right click to aim
                     aiming = true
-                    if player.turretAngle ~= angle then
+                    if math.abs(player.turretAngle - angle) > 5 then
                         network.queueGameEvent("player_aim", { id = player.id, angle = angle })
                         player.turretAngle = angle
                     end
@@ -984,8 +1017,6 @@ end
 
 function gamedata.startClientTicking()
     gamedata.createCallback(gamedata.tickTime, function()
-        local t0 = os.epoch(profile.timeunit)
-        profile.collisiondt, profile.renderdt = 0, 0
         for _, player in pairs(gamedata.players) do
             tickPlayerWeapon(player)
             tickPlayerPolygons(player)
@@ -996,10 +1027,6 @@ function gamedata.startClientTicking()
         for i in pairs(gamedata.bullets) do
             gamedata.tickBulletClient(i)
         end
-        profile.framedt = os.epoch(profile.timeunit) - t0
-        profile.frameCount = profile.frameCount + 1
-        profile.totalRenderDt = profile.totalRenderDt + profile.renderdt
-        profile.totaldt = profile.totaldt + profile.framedt
         return true
     end, true)
 end
@@ -1037,9 +1064,6 @@ end
 
 function gamedata.startServerTicking()
     gamedata.createCallback(gamedata.tickTime, function()
-        local t0 = os.epoch(profile.timeunit)
-        profile.collisionChecks, profile.edgeChecks = 0, 0
-        profile.collisiondt, profile.renderdt = 0, 0
         for _, player in pairs(gamedata.players) do
             gamedata.tickPlayer(player)
         end
@@ -1047,11 +1071,6 @@ function gamedata.startServerTicking()
         for i in pairs(gamedata.bullets) do
             gamedata.tickBulletServer(i)
         end
-        profile.framedt = os.epoch(profile.timeunit) - t0
-        profile.frameCount = profile.frameCount + 1
-        profile.totalRenderDt = profile.totalRenderDt + profile.renderdt
-        profile.totalCollisionDt = profile.totalCollisionDt + profile.collisiondt
-        profile.totaldt = profile.totaldt + profile.framedt
         return true
     end, true)
 end

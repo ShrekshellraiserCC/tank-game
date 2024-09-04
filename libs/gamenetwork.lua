@@ -73,12 +73,16 @@ local clientGameEventHandlers = {
     player_set_team = function(d)
         local player = gamedata.players[d.id]
         gamedata.setPlayerTeam(player, d.team)
-        gamedata.killPlayer(player)
+        if player.alive then
+            gamedata.killPlayer(player)
+        end
     end,
     player_set_class = function(d)
         local player = gamedata.players[d.id]
         gamedata.setPlayerClass(player, d.class)
-        gamedata.killPlayer(player)
+        if player.alive then
+            gamedata.killPlayer(player)
+        end
     end,
     -- Events created by server
     bullet_bounce = function(d)
@@ -94,6 +98,9 @@ local clientGameEventHandlers = {
     end,
     player_join = function(d)
         gamedata.newPlayer(d.id, d.name)
+        network.queueGameEvent("player_set_team", { id = d.id, team = gamedata.getUnbalancedTeam() })
+        network.queueGameEvent("player_set_class", { id = d.id, class = "base" })
+        network.queueGameEvent("player_respawn", { id = d.id })
     end,
     player_respawn = function(d)
         local player = gamedata.players[d.id]
@@ -113,6 +120,7 @@ local clientGameEventHandlers = {
             player.alive = false
             gamedata.explosion(player.pos)
             player.deaths = player.deaths + 1
+            player.velocity = 0
         end
         if d.bid and gamedata.bullets[d.bid] then
             local owner = gamedata.bullets[d.bid].owner
@@ -154,10 +162,12 @@ function network.queueGameEvent(type, t)
     end
 end
 
+network.lastMessage = 0
 local function clientConnection()
     while true do
-        local sender, message = rednet.receive(PROTOCOL, 5)
+        local sender, message = rednet.receive(PROTOCOL, 1)
         if sender == hostid and type(message) == 'table' then
+            network.lastMessage = os.epoch("utc")
             if message.type == "game_event" then
                 queueGameEventRaw(message.event, message.data)
             elseif message.type == "game_event_bundle" then
@@ -165,9 +175,9 @@ local function clientConnection()
                     queueGameEventRaw(v.type, v.data)
                 end
             end
-        elseif not sender then
+        elseif not sender and network.lastMessage + gamesettings.clientTimeout <= os.epoch("utc") then
             -- timeout
-            -- return
+            return
         end
     end
 end
@@ -260,12 +270,11 @@ local function serverHandleMessage(sender, message)
             bullets = gamedata.bullets,
         }, PROTOCOL)
         network.queueGameEvent("player_join", { id = sender, name = message.username })
-        network.queueGameEvent("player_set_team", { id = sender, team = sender == 2 and "red" or "blue" })
-        network.queueGameEvent("player_set_class", { id = sender, class = sender == 2 and "base" or "heavy" })
-        network.queueGameEvent("player_respawn", { id = sender })
     end
 end
 
+local tickNumber = 0
+local lastSentTickTime = 0
 local function serverTick()
     while true do
         sleep(gamedata.tickTime)
@@ -298,8 +307,13 @@ local function serverTick()
             tickInfo.bullets = updatedBullets
             substancialTick = true
         end
-        if substancialTick then
-            sendGameEventToClients("game_tick", tickInfo)
+        local needHeartbeat = os.epoch("utc") >= lastSentTickTime + gamesettings.heartbeat
+        if substancialTick or needHeartbeat then
+            tickNumber = tickNumber + 1
+            if tickNumber % gamesettings.interpolation == 0 or needHeartbeat then
+                sendGameEventToClients("game_tick", tickInfo)
+                lastSentTickTime = os.epoch("utc")
+            end
         end
     end
 end
