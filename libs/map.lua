@@ -11,10 +11,14 @@ local palette = require "libs.palette"
 ---@field textures table?
 ---@field spawns table
 
+---@class DoorPolygon : Polygon
+---@field team TeamID
+
 ---@class LoadedMap : SavedMap
 ---@field walls Polygon[]
+---@field doors DoorPolygon[]
 ---@field textures table<string,Texture>
----@field spawns {red: integer[],blue: integer[]}
+---@field spawns {red: integer[][],blue: integer[][]}
 
 ---@param v any
 ---@param s string
@@ -125,11 +129,13 @@ function map.loadMap(s)
         loadedMap.walls[i] = parsePolygon(loadedMap, "wall", i, v)
     end
     for i, v in ipairs(json.doors) do
-        loadedMap.doors[i] = parsePolygon(loadedMap, "door", i, v)
         passert(v.team, "door", i, "Door is missing a team!")
+        loadedMap.doors[i] = parsePolygon(loadedMap, "door", i, v) --[[@as DoorPolygon]]
         loadedMap.doors[i].team = v.team
     end
     loadedMap.spawns = json.spawns
+    nassert(loadedMap.spawns.red and #loadedMap.spawns.red > 0, "Map is missing red spawns!")
+    nassert(loadedMap.spawns.blue and #loadedMap.spawns.blue > 0, "Map is missing blue spawns!")
 
     return loadedMap
 end
