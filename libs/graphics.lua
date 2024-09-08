@@ -16,8 +16,10 @@ function graphics.setBox(b)
     box = b
 end
 
+graphics.mulx, graphics.muly = 2, 3
+
 local tw, th = term.getSize()
-local mx, my = tw, th / 2 * 3
+local mx, my = tw, th / 2 * graphics.muly
 local cornerx, cornery = 0, 0
 local cx, cy = mx, my
 function graphics.setViewCenter(x, y)
@@ -49,13 +51,14 @@ end
 ---@alias Point {[1]:number,[2]:number,[3]:number,[4]:number} x, y, u, v
 
 ---@alias Triangle {[1]:Point,[2]:Point,[3]:Point}
+---@alias FragmentShader fun(poly: Polygon, x: number, y: number, u: number, v: number, p1:Point, p2:Point, p3:Point)
 
 ---Render a triangle
 ---@param poly Polygon
 ---@param p1 Point
 ---@param p2 Point
 ---@param p3 Point
----@param frag fun(poly: Polygon, x: number, y: number, u: number, v: number)
+---@param frag FragmentShader
 function graphics.renderTriangle(poly, p1, p2, p3, frag)
     if p1[2] > p3[2] then p1, p3 = p3, p1 end
     if p1[2] > p2[2] then p1, p2 = p2, p1 end
@@ -90,7 +93,7 @@ function graphics.renderTriangle(poly, p1, p2, p3, frag)
                 local u = left_point[3] * bary_a + right_point[3] * bary_b + p3[3] * bary_c
                 local v = left_point[4] * bary_a + right_point[4] * bary_b + p3[4] * bary_c
 
-                frag(poly, x, y, u, v)
+                frag(poly, x, y, u, v, p1, p2, p3)
             end
 
             x_left, x_right = x_left + delta_left_top, x_right + delta_right_top
@@ -106,7 +109,7 @@ function graphics.renderTriangle(poly, p1, p2, p3, frag)
                 local u = p1[3] * bary_a + left_point[3] * bary_b + right_point[3] * bary_c
                 local v = p1[4] * bary_a + left_point[4] * bary_b + right_point[4] * bary_c
 
-                frag(poly, x, y, u, v)
+                frag(poly, x, y, u, v, p1, p2, p3)
             end
 
             x_left, x_right = x_left + delta_left_bottom, x_right + delta_right_bottom
@@ -135,7 +138,7 @@ end
 ---@param color color
 function graphics.setPixel(x, y, color)
     local ax, ay = trig.round(x - cornerx), trig.round(y - cornery)
-    if ax < 1 or ay < 1 or ax > tw * 2 or ay > th * 3 then
+    if ax < 1 or ay < 1 or ax > tw * graphics.mulx or ay > th * graphics.muly then
         return
     end
     box:set_pixel(ax, ay, color)
@@ -154,6 +157,18 @@ function graphics.drawLine(x0, y0, x1, y1, color)
         local y = graphics.lerp(y0, y1, t)
         graphics.setPixel(trig.round(x), trig.round(y), color)
     end
+end
+
+---@param x0 number
+---@param y0 number
+---@param x1 number
+---@param y1 number
+---@param color color
+function graphics.drawRectangle(x0, y0, x1, y1, color)
+    graphics.drawLine(x0, y0, x1, y0, color)
+    graphics.drawLine(x1, y0, x1, y1, color)
+    graphics.drawLine(x1, y1, x0, y1, color)
+    graphics.drawLine(x0, y1, x0, y0, color)
 end
 
 ---Draw a line from a starting point with a particular distance and angle
@@ -184,7 +199,7 @@ end
 function graphics.withinViewport(rxmin, rymin, rxmax, rymax)
     rxmin, rymin = graphics.worldToScreenPos(rxmin, rymin)
     rxmax, rymax = graphics.worldToScreenPos(rxmax, rymax)
-    return (rymin < th * 3 and rymax > 0) and (rxmin < tw * 2 and rxmax > 0)
+    return (rymin < th * graphics.muly and rymax > 0) and (rxmin < tw * graphics.mulx and rxmax > 0)
 end
 
 return graphics
