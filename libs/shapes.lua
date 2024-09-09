@@ -172,6 +172,7 @@ function shapes.polygon(pos, relPoints, color)
     ---@field texture Texture
     ---@field triangles Triangle[]
     ---@field apoints Point[] absolute positioned points
+    ---@field frag function?
     local poly = {}
     poly.scale = 1
     poly.pos = pos
@@ -292,7 +293,7 @@ end
 function shapes.drawPolygon(poly)
     -- if not polyWithinViewport(poly) then return end
     for _, tri in ipairs(poly.triangles) do
-        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], defaultFrag)
+        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], poly.frag or defaultFrag)
     end
 end
 
