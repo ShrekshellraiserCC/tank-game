@@ -12,15 +12,31 @@ local earClipping
 ---@field w integer
 ---@field h integer
 
+
+---Apply a 2D rotation to a given point around 0,0
+---@param x number
+---@param y number
+---@param degrees number
+---@return number
+---@return number
+local function rotatePoint(x, y, degrees)
+    local sin, cos = trig.sin(degrees), trig.cos(degrees)
+    return x * cos - y * sin, x * sin + y * cos
+end
+
 ---@param poly Polygon
 local function calculatePolygonBounds(poly)
     local bounds = { math.huge, math.huge, -math.huge, -math.huge }
     poly.bounds = bounds
     for _, p in ipairs(poly.points) do
-        bounds[1] = math.min(bounds[1], p[1])
-        bounds[2] = math.min(bounds[2], p[2])
-        bounds[3] = math.max(bounds[3], p[1])
-        bounds[4] = math.max(bounds[4], p[2])
+        local x, y = p[1], p[2]
+        if poly.angle ~= 0 then
+            x, y = rotatePoint(x, y, poly.angle)
+        end
+        bounds[1] = math.min(bounds[1], x)
+        bounds[2] = math.min(bounds[2], y)
+        bounds[3] = math.max(bounds[3], x)
+        bounds[4] = math.max(bounds[4], y)
     end
 end
 
@@ -34,18 +50,6 @@ local function generatePolygonUVs(poly)
         p[4] = ((ry / h) * uvh) + poly.uvbounds[2]
     end
 end
-
----Apply a 2D rotation to a given point around 0,0
----@param x number
----@param y number
----@param degrees number
----@return number
----@return number
-local function rotatePoint(x, y, degrees)
-    local sin, cos = trig.sin(degrees), trig.cos(degrees)
-    return x * cos - y * sin, x * sin + y * cos
-end
-
 
 ---@param p1 Point
 ---@param p2 Point
@@ -159,8 +163,9 @@ end
 ---@param pos Vector
 ---@param relPoints Point[]|Vector[] List of points, if UV not present it will be generated automatically
 ---@param color color?
+---@param angle number?
 ---@return Polygon
-function shapes.polygon(pos, relPoints, color)
+function shapes.polygon(pos, relPoints, color, angle)
     ---@class Polygon
     ---@field points Point[]
     ---@field bounds Point
@@ -176,7 +181,7 @@ function shapes.polygon(pos, relPoints, color)
     local poly = {}
     poly.scale = 1
     poly.pos = pos
-    poly.angle = 0
+    poly.angle = angle or 0
     poly.uvbounds = { 0, 0, 1, 1 }
     poly.points = {}
     if color then
@@ -290,10 +295,11 @@ end
 
 ---Draw lines between a list of points
 ---@param poly Polygon
-function shapes.drawPolygon(poly)
+---@param wireframe boolean?
+function shapes.drawPolygon(poly, wireframe)
     -- if not polyWithinViewport(poly) then return end
     for _, tri in ipairs(poly.triangles) do
-        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], poly.frag or defaultFrag)
+        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], poly.frag or defaultFrag, wireframe)
     end
 end
 
