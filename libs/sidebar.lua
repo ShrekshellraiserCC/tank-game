@@ -15,6 +15,8 @@ local startY = 3
 ---@field cursor integer?
 ---@field number boolean?
 ---@field cursorWin integer?
+---@field min integer?
+---@field max integer?
 
 ---@class SidebarDropdown:SidebarEntry
 ---@field type "dropdown"
@@ -45,11 +47,15 @@ function sidebar.input(label, ...)
 end
 
 ---@param label string
+---@param options {min:integer?,max:integer?}?
 ---@param ... any
 ---@return SidebarInput
-function sidebar.numberInput(label, ...)
+function sidebar.numberInput(label, options, ...)
     local entry = sidebar.input(label, ...)
     entry.number = true
+    options = options or {}
+    entry.min = options.min
+    entry.max = options.max
     return entry
 end
 
@@ -90,8 +96,8 @@ end
 local function index(bar, entry)
     local value = bar.data
     for _, v in ipairs(entry.indicies) do
-        value = value[v]
         if not value then break end
+        value = value[v]
     end
     return value
 end
@@ -174,6 +180,10 @@ local function renderEntry(win, y, entry, bar)
     color(win, ofg, obg)
 end
 
+local function clamp(n, min, max)
+    return math.min(math.max(n or min or 0, min or -math.huge), max or math.huge)
+end
+
 local entryEventHandlers = {
     input = {
         char = function(bar, ch)
@@ -186,7 +196,7 @@ local entryEventHandlers = {
             sval = sval:sub(1, sinput.cursor) .. ch .. sval:sub(sinput.cursor + 1)
             sinput.cursor = sinput.cursor + 1
             if sinput.number then
-                sval = tonumber(sval) or 0
+                sval = clamp(tonumber(sval), sinput.min, sinput.max)
             end
             setIndex(bar, sinput, sval)
         end,
@@ -197,7 +207,7 @@ local entryEventHandlers = {
             if key == keys.backspace then
                 sval = sval:sub(1, sinput.cursor - 2) .. sval:sub(sinput.cursor)
                 sinput.cursor = math.max(1, sinput.cursor - 1)
-                setIndex(bar, sinput, sval)
+                setIndex(bar, sinput, clamp(tonumber(sval), sinput.min, sinput.max))
             elseif key == keys.left then
                 sinput.cursor = math.max(1, sinput.cursor - 1)
             elseif key == keys.right then
@@ -302,7 +312,8 @@ local eventHandlers = {
             if selected.type == "input" then
                 local sinput = selected --[[@as SidebarInput]]
                 local value = index(bar, sinput) or 0
-                setIndex(bar, sinput, value - dir)
+                setIndex(bar, sinput,
+                    math.max(math.min(value - dir, selected.max or math.huge), selected.min or -math.huge))
             end
             return true
         end
@@ -331,7 +342,9 @@ function sidebar.new(parentWin, width)
     ---@param data T
     ---@param onUpdate fun(data: T)
     function bar.update(scheme, data, onUpdate)
-        bar.selected = nil
+        if scheme ~= bar.scheme then
+            bar.selected = nil
+        end
         bar.scheme = scheme
         bar.data = data
         bar.onUpdate = onUpdate
