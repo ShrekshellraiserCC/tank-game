@@ -8,6 +8,7 @@ local palette = require "libs.palette"
 ---@field description string?
 ---@field walls table
 ---@field doors table?
+---@field floors table?
 ---@field textures table?
 ---@field spawns table
 
@@ -17,6 +18,7 @@ local palette = require "libs.palette"
 ---@class LoadedMap : SavedMap
 ---@field walls Polygon[]
 ---@field doors DoorPolygon[]
+---@field floors Polygon[]
 ---@field textures table<string,Texture>
 ---@field spawns {red: integer[][],blue: integer[][]}
 
@@ -62,7 +64,7 @@ local function parseShapes(part, i, desc)
         points = shapes.getCirclePoints(desc.radius, desc.quality)
     end
     passert(points, part, i, "Unrecognized shape '%s'.", desc.shape)
-    return shapes.polygon(position, points)
+    return shapes.polygon(position, points, nil, desc.angle)
 end
 
 ---@param loaded LoadedMap
@@ -111,6 +113,7 @@ function map.loadMap(s)
         description = json.description,
         walls = {},
         doors = {},
+        floors = {},
         textures = {},
         spawns = {}
     }
@@ -128,10 +131,13 @@ function map.loadMap(s)
     for i, v in ipairs(json.walls) do
         loadedMap.walls[i] = parsePolygon(loadedMap, "wall", i, v)
     end
-    for i, v in ipairs(json.doors) do
+    for i, v in ipairs(json.doors or {}) do
         passert(v.team, "door", i, "Door is missing a team!")
         loadedMap.doors[i] = parsePolygon(loadedMap, "door", i, v) --[[@as DoorPolygon]]
         loadedMap.doors[i].team = v.team
+    end
+    for i, v in ipairs(json.floors or {}) do
+        loadedMap.floors[i] = parsePolygon(loadedMap, "floor", i, v)
     end
     loadedMap.spawns = json.spawns
     nassert(loadedMap.spawns.red and #loadedMap.spawns.red > 0, "Map is missing red spawns!")
@@ -154,10 +160,13 @@ end
 
 ---@param m LoadedMap
 function map.renderMap(m)
-    for _, v in pairs(m.walls) do
+    for _, v in pairs(m.floors) do
         shapes.drawPolygon(v)
     end
     for _, v in pairs(m.doors) do
+        shapes.drawPolygon(v)
+    end
+    for _, v in pairs(m.walls) do
         shapes.drawPolygon(v)
     end
 end
