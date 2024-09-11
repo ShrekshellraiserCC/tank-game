@@ -59,7 +59,14 @@ end
 ---@param p2 Point
 ---@param p3 Point
 ---@param frag FragmentShader
-function graphics.renderTriangle(poly, p1, p2, p3, frag)
+---@param wireframe boolean?
+function graphics.renderTriangle(poly, p1, p2, p3, frag, wireframe)
+    if wireframe then
+        graphics.drawLine(p1[1], p1[2], p2[1], p2[2], poly.texture.data[1][1])
+        graphics.drawLine(p2[1], p2[2], p3[1], p3[2], poly.texture.data[1][1])
+        graphics.drawLine(p3[1], p3[2], p1[1], p1[2], poly.texture.data[1][1])
+        return
+    end
     if p1[2] > p3[2] then p1, p3 = p3, p1 end
     if p1[2] > p2[2] then p1, p2 = p2, p1 end
     if p2[2] > p3[2] then p2, p3 = p3, p2 end
