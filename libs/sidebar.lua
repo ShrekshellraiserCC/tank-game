@@ -18,18 +18,36 @@ local startY = 3
 ---@field min integer?
 ---@field max integer?
 
+---@alias DropdownCallback fun(t:table, v: any)
 ---@class SidebarDropdown:SidebarEntry
 ---@field type "dropdown"
 ---@field options string[]
+---@field callback DropdownCallback?
+
+---@class SidebarDropdownLookup:SidebarDropdown
+---@field type "dropdownLookup"
+---@field lut table<string,any>
+---@field rlut table<any,string>
 
 ---@param label string
----@return SidebarInput
+---@return SidebarEntry
 function sidebar.label(label)
     local entry = {}
     entry.type = "label"
     entry.label = label
     entry.indicies = {}
     entry.height = 1
+    return entry
+end
+
+---@param label string
+---@return SidebarEntry
+function sidebar.infoLabel(label, ...)
+    local entry = {}
+    entry.type = "infoLabel"
+    entry.label = label
+    entry.indicies = table.pack(...)
+    entry.height = 2
     return entry
 end
 
@@ -62,13 +80,15 @@ end
 ---@param label string
 ---@param options string[]
 ---@param ... any
+---@param callback DropdownCallback?
 ---@return SidebarDropdown
-function sidebar.dropdown(label, options, ...)
+function sidebar.dropdown(label, options, callback, ...)
     local entry = {}
     entry.type = "dropdown"
     entry.label = label
     entry.indicies = table.pack(...)
     entry.options = options
+    entry.callback = callback
     entry.height = 2
     return entry
 end
@@ -161,6 +181,20 @@ local renderers = {
                 win.write(v)
             end
         end
+    end,
+    ---@param win Window
+    ---@param y number
+    ---@param entry SidebarDropdown
+    ---@param bar Sidebar
+    infoLabel = function(win, y, entry, bar)
+        local w, h = win.getSize()
+        local tw = w - 3
+        win.setCursorPos(3, y + 1)
+        color(win, fg, bg)
+        win.write((" "):rep(tw))
+        win.setCursorPos(3, y + 1)
+        local val = index(bar, entry)
+        win.write(val)
     end
 }
 
@@ -241,7 +275,12 @@ local entryEventHandlers = {
                 return true
             elseif bar.selected == entry then
                 if y > entry.y + 1 and y < entry.y + 2 + #entry.options then
-                    setIndex(bar, entry, entry.options[y - entry.y - 1])
+                    if entry.callback then
+                        entry.callback(bar.data, entry.options[y - entry.y - 1])
+                        bar.onUpdate(bar.data)
+                    else
+                        setIndex(bar, entry, entry.options[y - entry.y - 1])
+                    end
                     return true
                 end
             end

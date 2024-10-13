@@ -12,20 +12,26 @@ mbar.setWindow(win)
 local sbar = sidebar.new(win, 20)
 local fakebox = require("libs.fakebox").new(win)
 local pixelbox = require("libs.pixelbox").new(win)
+local bixelbox = require("libs.bixelbox").new(win)
 
 local activeBox
-local function setOneToOneScale(oneToOne)
-    if oneToOne then
+---@param mode "1x"|"real"|"2x"
+local function setScaleMode(mode)
+    if mode == "1x" then
         graphics.mulx, graphics.muly = 1, 1
         graphics.setBox(fakebox)
         activeBox = fakebox
+    elseif mode == "2x" then
+        graphics.mulx, graphics.muly = 1, 1.5
+        graphics.setBox(bixelbox)
+        activeBox = bixelbox
     else
         graphics.mulx, graphics.muly = 2, 3
         graphics.setBox(pixelbox)
         activeBox = pixelbox
     end
 end
-setOneToOneScale(false)
+setScaleMode("real")
 
 local baseWidth, baseHeight = 51, 19
 local vx, vy = 1, 1
@@ -55,10 +61,26 @@ local function updateWorkingMap()
         end
     end
 end
+local textureOptions = { "None" }
+local textureLut = {}
+local function updateTextureOptions()
+    for k, v in pairs(textureLut) do
+        textureLut[k] = nil
+    end
+    for k, v in pairs(textureOptions) do
+        textureOptions[k] = nil
+    end
+    textureOptions[1] = "None"
+    for k, v in pairs(wmap.textures) do
+        textureLut[k] = k
+        textureOptions[#textureOptions + 1] = k
+    end
+end
 local function loadMap(name)
     local s = map.readFile(name)
     smap = textutils.unserialiseJSON(s) --[[@as SavedMap]]
     updateWorkingMap()
+    updateTextureOptions()
 end
 local function saveMap(name)
     mapFilename = name
@@ -69,11 +91,37 @@ local function saveMap(name)
 end
 loadMap("maps/default.json")
 
+local bar
 local running = true
 local quitButton = mbar.button("Quit", function(entry)
     running = false
 end)
-local fileMenu = mbar.buttonMenu { quitButton }
+local openButton = mbar.button("Open", function(entry)
+    local complete = require("cc.shell.completion")
+    local fn = mbar.popupRead("Open", 15, nil, function(str)
+        local list = complete.file(shell, str)
+        for i = #list, 1, -1 do
+            if not (list[i]:match("/$") or list[i]:match("%.json$")) then
+                table.remove(list, i)
+            end
+        end
+        return list
+    end)
+    bar.resetKeys()
+    if fn then
+        loadMap(fn)
+        mapFilename = fn
+    end
+end)
+local saveAsButton = mbar.button("Save As", function(entry)
+    local fn = mbar.popupRead("Save As", 15)
+    bar.resetKeys()
+    if fn then
+        saveMap(fn)
+        mapFilename = fn
+    end
+end)
+local fileMenu = mbar.buttonMenu { openButton, saveAsButton, quitButton }
 local fileButton = mbar.button("File", nil, fileMenu)
 
 local viewWalls = true
@@ -104,22 +152,30 @@ local viewSpawnpoints = false
 local viewSpawnpointsButton = mbar.toggleButton("Spawnpoints", function(self)
     viewSpawnpoints = self.value
 end)
-local viewModeMenu = mbar.radialMenu({ "Game", "1:1" }, function(self)
-    setOneToOneScale(self.selected == 2)
+local modes = {
+    "real", "1x", "2x"
+}
+local viewModeMenu = mbar.radialMenu({ "Game", "1:1", "2x" }, function(self)
+    setScaleMode(modes[self.selected])
 end)
 local viewModeButton = mbar.button("Scale", nil, viewModeMenu)
+local viewCenterLines = false
+local viewCenterLinesButton = mbar.toggleButton("Center Lines", function(self)
+    viewCenterLines = self.value
+end)
 local objectViewMenu = mbar.buttonMenu {
     viewFloorsButton,
     viewWallsButton,
     viewDoorsButton,
-    viewSpawnpointsButton,
+    viewSpawnpointsButton
 }
 local objectViewButton = mbar.button("Object", nil, objectViewMenu)
 local viewMenu = mbar.buttonMenu {
     objectViewButton,
     termViewboxButton,
     viewModeButton,
-    viewWireframeButton
+    viewWireframeButton,
+    viewCenterLinesButton
 }
 local viewButton = mbar.button("View", nil, viewMenu)
 
@@ -132,8 +188,8 @@ local insertWallButton = mbar.button("Wall", function(entry)
         height = 10,
         color = "white",
         position = {
-            vx + (tw / 2) * graphics.mulx,
-            vy + (th / 2) * graphics.muly
+            vx + math.floor(tw / 2) * graphics.mulx,
+            vy + math.floor(th / 2) * graphics.muly
         },
     }
     updateWorkingMap()
@@ -149,8 +205,8 @@ local insertDoorButton = mbar.button("Door", function(entry)
         height = 10,
         color = "white",
         position = {
-            vx + (tw / 2) * graphics.mulx,
-            vy + (th / 2) * graphics.muly
+            vx + math.floor(tw / 2) * graphics.mulx,
+            vy + math.floor(th / 2) * graphics.muly
         },
         team = "red"
     }
@@ -167,8 +223,8 @@ local insertFloorButton = mbar.button("Floor", function(entry)
         height = 10,
         color = "white",
         position = {
-            vx + (tw / 2) * graphics.mulx,
-            vy + (th / 2) * graphics.muly
+            vx + math.floor(tw / 2) * graphics.mulx,
+            vy + math.floor(th / 2) * graphics.muly
         },
     }
     updateWorkingMap()
@@ -177,7 +233,7 @@ end)
 local insertRedSpawnButton = mbar.button("Red", function(entry)
     local tw, th = win.getSize()
     local idx = #smap.spawns.red + 1
-    local x, y = vx + (tw / 2) * graphics.mulx, vy + (th / 2) * graphics.muly
+    local x, y = vx + math.floor(tw / 2) * graphics.mulx, vy + math.floor(th / 2) * graphics.muly
     smap.spawns.red[idx] = {
         x, y
     }
@@ -187,7 +243,7 @@ end)
 local insertBlueSpawnButton = mbar.button("Blue", function(entry)
     local tw, th = win.getSize()
     local idx = #smap.spawns.blue + 1
-    local x, y = vx + (tw / 2) * graphics.mulx, vy + (th / 2) * graphics.muly
+    local x, y = vx + math.floor(tw / 2) * graphics.mulx, vy + math.floor(th / 2) * graphics.muly
     smap.spawns.blue[idx] = {
         x, y
     }
@@ -246,7 +302,13 @@ end)
 local editMenu = mbar.buttonMenu { selectableButton, deleteButton }
 local editButton = mbar.button("Edit", nil, editMenu)
 
-local bar = mbar.bar { fileButton, editButton, insertButton, viewButton }
+local dumpPaletteButton = mbar.button("Dump Palette", function(entry)
+    palette.dump(win)
+end)
+local debugMenu = mbar.buttonMenu({ dumpPaletteButton })
+local debugButton = mbar.button("Debug", nil, debugMenu)
+
+bar = mbar.bar { fileButton, editButton, insertButton, viewButton, debugButton }
 bar.shortcut(quitButton, keys.q, true)
 bar.shortcut(deleteButton, keys.delete)
 
@@ -282,6 +344,8 @@ end
 ---@return number y1
 ---@return number x2
 ---@return number y2
+---@return number cx
+---@return number cy
 local function getGizmoCorners(poly)
     local px, py = poly.pos.x, poly.pos.y
     local x1, y1 = graphics.worldToScreenPos(px + poly.bounds[1] - 1, py + poly.bounds[2] - 1)
@@ -291,16 +355,52 @@ local function getGizmoCorners(poly)
 
     local x1r, y1r = divscale(x1, y1)
     local x2r, y2r = divscale(x2, y2)
-    -- local cx, cy = math.ceil((x1r + x2r) / 2), math.ceil((y1r + y2r) / 2)
+    local cx, cy = graphics.worldToScreenPos(px, py)
 
-    -- local hw, hh = math.floor(ow / 2), math.floor(oh / 2)
-    -- local x1rs, y1rs = cx - hw, cy - hh
-    -- local x2rs, y2rs = x1rs + ow, y1rs + oh
-
-    return math.ceil(x1r - 1), math.ceil(y1r - 1), x2r + 1, y2r + 1
+    return math.ceil(x1r - 1), math.ceil(y1r - 1), x2r + 1, y2r + 1, divscale(cx, cy)
+end
+local horizStr
+do
+    local w, h = win.getSize()
+    horizStr = ("-"):rep(w)
+end
+---@param x1 number
+---@param y1 number
+---@param x2 number
+---@param y2 number
+---@param cx number
+---@param cy number
+local function drawCenterLines(x1, y1, x2, y2, cx, cy)
+    local ofg, obg = col(colors.white, colors.black)
+    local w, h = win.getSize()
+    scp(-w + x1, cy)
+    win.write(horizStr)
+    scp(x2 + 1, cy)
+    win.write(horizStr)
+    for dy = 1, h do
+        scp(cx, -h + y1 + dy - 1)
+        win.write("|")
+        scp(cx, y2 + dy)
+        win.write("|")
+    end
+    scp(cx, y1)
+    win.write("\25")
+    scp(cx, y2)
+    win.write("\24")
+    scp(x1, cy)
+    win.write("\26")
+    scp(x2, cy)
+    win.write("\27")
+    col(ofg, obg)
 end
 
-local function drawGizmoBox(x1, y1, x2, y2)
+---@param x1 number
+---@param y1 number
+---@param x2 number
+---@param y2 number
+---@param cx number
+---@param cy number
+local function drawGizmoBox(x1, y1, x2, y2, cx, cy)
     local ofg, obg = col(colors.white, colors.black)
     local w = x2 - x1 - 1
     local h = y2 - y1 - 1
@@ -326,8 +426,11 @@ end
 
 ---@param poly Polygon
 local function drawGizmoBoxp(poly)
-    local x1, y1, x2, y2 = getGizmoCorners(poly)
-    drawGizmoBox(x1, y1, x2, y2)
+    local x1, y1, x2, y2, cx, cy = getGizmoCorners(poly)
+    drawGizmoBox(x1, y1, x2, y2, cx, cy)
+    if viewCenterLines then
+        drawCenterLines(x1, y1, x2, y2, cx, cy)
+    end
 end
 
 ---@param x integer
@@ -405,9 +508,7 @@ local function renderTermViewport()
     if not viewTermViewport then return end
     local tw, th = term.getSize()
     local vpw, vph = baseWidth, baseHeight
-    if activeBox == fakebox then
-        vpw, vph = vpw * 2, vph * 3
-    end
+    vpw, vph = vpw * 2 / graphics.mulx, vph * 3 / graphics.muly
     local cx, cy = math.floor((tw - vpw) / 2), math.floor((th - vph) / 2)
     local x1, y1 = graphics.screenToWorldPos(mulscale(cx, cy))
     local x2, y2 = graphics.screenToWorldPos(mulscale(cx + vpw + 1, cy + vph + 1))
@@ -440,7 +541,7 @@ local function render()
     if selectedPoly and selectedType == "spawns" then
         local spawn = smap.spawns[selectedPoly.color][selectedIndex]
         local x, y = divscale(graphics.worldToScreenPos(spawn[1], spawn[2]))
-        drawGizmoBox(x - 1, y - 1, x + 1, y + 1)
+        drawGizmoBox(x - 1, y - 1, x + 1, y + 1, x, y)
     elseif selectedPoly then
         drawGizmoBoxp(selectedPoly)
         scp(divscale(graphics.worldToScreenPos(selectedPoly.pos.x, selectedPoly.pos.y)))
@@ -468,10 +569,21 @@ local function renderLoop()
 end
 
 local shapeOptions = { "rect", "ctr_rect", "circle" }
+updateTextureOptions()
 
 local colorOptions = {}
 for k, v in pairs(palette.colors) do
     colorOptions[#colorOptions + 1] = k
+end
+
+local function textureCallback(t, v)
+    if v == "None" then
+        t.texture = nil
+        t.color = "white"
+    else
+        t.texture = v
+        t.color = nil
+    end
 end
 
 local wallRectScheme = {
@@ -479,8 +591,9 @@ local wallRectScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
     sidebar.numberInput("Width", { min = 2 }, "width"),
     sidebar.numberInput("Height", { min = 2 }, "height"),
 }
@@ -490,8 +603,9 @@ local wallCircleScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
     sidebar.numberInput("Radius", { min = 2 }, "radius"),
     sidebar.numberInput("Quality", { min = 3, max = 50 }, "quality"),
 }
@@ -500,8 +614,9 @@ local floorRectScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
     sidebar.numberInput("Width", { min = 2 }, "width"),
     sidebar.numberInput("Height", { min = 2 }, "height"),
 }
@@ -511,8 +626,9 @@ local floorCircleScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
     sidebar.numberInput("Radius", { min = 2 }, "radius"),
     sidebar.numberInput("Quality", { min = 3, max = 50 }, "quality"),
 }
@@ -523,9 +639,10 @@ local doorRectScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
-    sidebar.dropdown("Team", { "red", "blue" }, "team"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
+    sidebar.dropdown("Team", { "red", "blue" }, nil, "team"),
     sidebar.numberInput("Width", { min = 2 }, "width"),
     sidebar.numberInput("Height", { min = 2 }, "height")
 }
@@ -535,9 +652,10 @@ local doorCircleScheme = {
     sidebar.numberInput("Pos X", nil, "position", 1),
     sidebar.numberInput("Pos Y", nil, "position", 2),
     sidebar.numberInput("Angle", nil, "angle"),
-    sidebar.dropdown("Shape", shapeOptions, "shape"),
-    sidebar.dropdown("Color", colorOptions, "color"),
-    sidebar.dropdown("Team", { "red", "blue" }, "team"),
+    sidebar.dropdown("Shape", shapeOptions, nil, "shape"),
+    sidebar.dropdown("Color", colorOptions, nil, "color"),
+    sidebar.dropdown("Texture", textureOptions, textureCallback, "texture"),
+    sidebar.dropdown("Team", { "red", "blue" }, nil, "team"),
     sidebar.numberInput("Radius", { min = 2 }, "radius"),
     sidebar.numberInput("Quality", { min = 3, max = 50 }, "quality")
 }
