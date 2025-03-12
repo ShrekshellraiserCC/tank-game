@@ -12,6 +12,7 @@ local gamesettings              = require "libs.gamesettings"
 ---@field color color
 ---@field tankTexture Texture
 ---@field turretTexture Texture
+---@field accent color
 
 ---@alias TeamID "red"|"blue"
 
@@ -28,11 +29,13 @@ local blueTankTurretTextureData = map.readFile("textures/blue_tank_turret.tex")
 gamedata.teams                  = {
     red = {
         color = palette.colors.red,
+        accent = palette.colors.redShade,
         tankTexture = shapes.parseTexture(redTankTextureData),
         turretTexture = shapes.parseTexture(redTankTurretTextureData),
     },
     blue = {
         color = palette.colors.blue,
+        accent = palette.colors.blueShade,
         tankTexture = shapes.parseTexture(blueTankTextureData),
         turretTexture = shapes.parseTexture(blueTankTurretTextureData),
     }
@@ -78,8 +81,8 @@ gamedata.classes                = {
             maxAcceleration = 0.1,
             maxAngleVelocity = 6,
         },
-        size = vector.new(4, 9, 0),
-        turretLength = 8,
+        size = vector.new(6, 10, 0),
+        turretLength = 10,
         turretSize = vector.new(5, 5, 0),
     },
     heavy = {
@@ -110,8 +113,8 @@ gamedata.classes                = {
             maxAcceleration = 0.1,
             maxAngleVelocity = 5,
         },
-        size = vector.new(6, 10, 0),
-        turretLength = 9,
+        size = vector.new(8, 12, 0),
+        turretLength = 12,
         turretSize = vector.new(6, 6, 0),
     }
 }
@@ -190,11 +193,11 @@ local viewVelocity              = 5
 ---@param player Player
 function gamedata.createPlayerPolys(player)
     player.poly = shapes.polygon(player.pos, shapes.getRectangleCorners(player.size.x, player.size.y), player.color)
-    player.poly.texture = gamedata.teams[player.team].tankTexture
+    -- player.poly.texture = gamedata.teams[player.team].tankTexture
     player.poly.angle = player.angle
     player.turretPoly = shapes.polygon(player.pos, shapes.getRectangleCorners(player.turretSize.x, player.turretSize.y),
-        player.color)
-    player.turretPoly.texture = gamedata.teams[player.team].turretTexture
+        gamedata.teams[player.team].accent)
+    -- player.turretPoly.texture = gamedata.teams[player.team].turretTexture
     player.turretPoly.angle = player.turretAngle
 end
 
@@ -202,7 +205,7 @@ end
 ---@param team TeamID
 function gamedata.setPlayerTeam(player, team)
     player.color = gamedata.teams[team].color
-    player.turretColor = gamedata.teams[team].color
+    player.turretColor = gamedata.teams[team].accent
     player.team = team
     player.teamValid = true
     if player.classValid then
@@ -722,8 +725,8 @@ end
 ---@param player Player
 local function renderHud(player)
     -- win.setCursorPos(1, th)
-    -- win.setBackgroundColor(colors.black)
-    -- win.setTextColor(colors.white)
+    win.setBackgroundColor(colors.black)
+    win.setTextColor(colors.white)
     -- win.clearLine()
     local network = require("libs.gamenetwork")
     local timingOut = network.lastMessage + gamesettings.clientTimeoutWarning < os.epoch("utc")
@@ -764,6 +767,42 @@ local function renderHud(player)
     end
 end
 
+local function getSlopeChar(theta)
+    theta = theta % 180
+    if theta < 45 - 22 then
+        return "-"
+    elseif theta < 90 - 22 then
+        return "\\"
+    elseif theta < 135 - 22 then
+        return "|"
+    elseif theta < 180 - 22 then
+        return "/"
+    end
+    return "-"
+end
+
+local function renderVisibilityAssistors()
+    -- place a character on the center of every tank
+    -- place an appropriately rotated character at the end of every tanks' barrel
+    for _, v in pairs(gamedata.players) do
+        if v.alive then
+            local x, y = graphics.worldToScreenPos(v.pos.x, v.pos.y)
+            win.setCursorPos(math.floor(x / 2 + 0.5), math.floor(y / 3 + 0.5))
+            win.setBackgroundColor(gamedata.teams[v.team].accent)
+            win.setTextColor(v.color)
+            win.write("T")
+            win.setBackgroundColor(colors.black)
+
+            local theta = v.turretAngle
+            local dx = trig.cos(theta) * v.turretLength * 1.2
+            local dy = trig.sin(theta) * v.turretLength * 1.2
+            win.setCursorPos(math.floor((x + dx) / 2 + 0.5), math.floor((y + dy) / 3 + 0.5))
+            win.setTextColor(v.color)
+            win.write(getSlopeChar(theta))
+        end
+    end
+end
+
 local renderTimeString = ("Render: %%d%s"):format(profile.timelabel)
 local cid = os.getComputerID()
 local function render()
@@ -778,12 +817,17 @@ local function render()
         for _, v in pairs(gamedata.players) do
             renderPlayer(v)
         end
+        box:render()
         for _, v in pairs(gamedata.bullets) do
             local player = gamedata.players[v.owner]
-            local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), player.color)
-            shapes.drawPolygon(bulletPoly)
+            -- local bulletPoly = shapes.polygon(v.pos, shapes.getRectanglePointsCorner(2, 2), player.color)
+            -- shapes.drawPolygon(bulletPoly)
+            local x, y = graphics.worldToScreenPos(v.pos.x, v.pos.y)
+            win.setCursorPos(math.floor(x / 2 + 0.5), math.floor(y / 3 + 0.5))
+            win.setTextColor(player.color)
+            win.write("\7")
         end
-        box:render()
+        renderVisibilityAssistors()
         renderHud(gamedata.players[cid])
         profile.set(renderTimeString, os.epoch(profile.timeunit) - render0)
         if profile.enableOverlay then
