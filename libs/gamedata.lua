@@ -666,6 +666,7 @@ local classCount = #classList
 
 local _, redDummyTank = next(dummyPlayers.red)
 local _, blueDummyTank = next(dummyPlayers.blue)
+assert(redDummyTank and blueDummyTank, "Missing dummy tanks for menu renders!")
 local function renderMenu()
     local hw = tw / 2
     if gamedata.menuMode == "TEAM_SELECT" then

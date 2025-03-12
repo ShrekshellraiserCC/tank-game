@@ -27,6 +27,10 @@ function graphics.setViewCenter(x, y)
     cornerx, cornery = cx - mx, cy - my
 end
 
+function graphics.refreshSize()
+    tw, th = term.getSize()
+end
+
 function graphics.setViewCorner(x, y)
     cornerx, cornery = x, y
 end
@@ -51,7 +55,7 @@ end
 ---@alias Point {[1]:number,[2]:number,[3]:number,[4]:number} x, y, u, v
 
 ---@alias Triangle {[1]:Point,[2]:Point,[3]:Point}
----@alias FragmentShader fun(poly: Polygon, x: number, y: number, u: number, v: number, p1:Point, p2:Point, p3:Point)
+---@alias FragmentShader fun(poly: Polygon, x: number, y: number, u: number, v: number, p1:Point, p2:Point, p3:Point, double:boolean)
 
 ---Render a triangle
 ---@param poly Polygon
@@ -60,7 +64,8 @@ end
 ---@param p3 Point
 ---@param frag FragmentShader
 ---@param wireframe boolean?
-function graphics.renderTriangle(poly, p1, p2, p3, frag, wireframe)
+---@param double boolean?
+function graphics.renderTriangle(poly, p1, p2, p3, frag, wireframe, double)
     if wireframe then
         graphics.drawLine(p1[1], p1[2], p2[1], p2[2], poly.texture.data[1][1])
         graphics.drawLine(p2[1], p2[2], p3[1], p3[2], poly.texture.data[1][1])
@@ -90,17 +95,31 @@ function graphics.renderTriangle(poly, p1, p2, p3, frag, wireframe)
     local subpixel_bottom    = math.floor(p1[2] + 0.5) + 0.5 - p1[2]
     local subpixel_top       = math.floor(p2[2] + 0.5) + 0.5 - left_point[2]
 
+    local iter               = (double and 2) or 1
+
     if delta_left_top then
         local x_left, x_right = left_point[1] + delta_left_top * subpixel_top,
             right_point[1] + delta_right_top * subpixel_top
 
-        for y = math.floor(p2[2] + 0.5), math.ceil(p3[2] - 0.5) do
-            for x = math.ceil(x_left - 0.5), math.ceil(x_right - 0.5) - 1 do
+        local sy, fy = math.floor(p2[2] + 0.5), math.ceil(p3[2] - 0.5)
+        if double then
+            local move = (sy % 2)
+            sy = sy - 1 + move
+            fy = fy - 1 + move
+        end
+        for y = sy, fy, iter do
+            local sx, fx = math.ceil(x_left - 0.5), math.ceil(x_right - 0.5) - 1
+            if double then
+                local move = (sx % 2)
+                sx = sx - 1 + move
+                fx = fx - 1 + move
+            end
+            for x = sx, fx, iter do
                 local bary_a, bary_b, bary_c = bary(x, y, left_point, right_point, p3)
                 local u = left_point[3] * bary_a + right_point[3] * bary_b + p3[3] * bary_c
                 local v = left_point[4] * bary_a + right_point[4] * bary_b + p3[4] * bary_c
 
-                frag(poly, x, y, u, v, p1, p2, p3)
+                frag(poly, x, y, u, v, p1, p2, p3, double)
             end
 
             x_left, x_right = x_left + delta_left_top, x_right + delta_right_top
@@ -110,13 +129,25 @@ function graphics.renderTriangle(poly, p1, p2, p3, frag, wireframe)
     if delta_left_bottom then
         local x_left, x_right = p1[1] + delta_left_bottom * subpixel_bottom, p1[1] + delta_right_bottom * subpixel_bottom
 
-        for y = math.floor(p1[2] + 0.5), math.floor(p2[2] + 0.5) - 1 do
-            for x = math.ceil(x_left - 0.5), math.ceil(x_right - 0.5) - 1 do
+        local sy, fy = math.floor(p1[2] + 0.5), math.floor(p2[2] + 0.5) - 1
+        if double then
+            local move = (sy % 2)
+            sy = sy - 1 + move
+            fy = fy - 1 + move
+        end
+        for y = sy, fy, iter do
+            local sx, fx = math.ceil(x_left - 0.5), math.ceil(x_right - 0.5) - 1
+            if double then
+                local move = (sx % 2)
+                sx = sx - 1 + move
+                fx = fx - 1 + move
+            end
+            for x = sx, fx, iter do
                 local bary_a, bary_b, bary_c = bary(x, y, p1, left_point, right_point)
                 local u = p1[3] * bary_a + left_point[3] * bary_b + right_point[3] * bary_c
                 local v = p1[4] * bary_a + left_point[4] * bary_b + right_point[4] * bary_c
 
-                frag(poly, x, y, u, v, p1, p2, p3)
+                frag(poly, x, y, u, v, p1, p2, p3, double)
             end
 
             x_left, x_right = x_left + delta_left_bottom, x_right + delta_right_bottom
@@ -143,12 +174,32 @@ function graphics.worldToScreenPos(x, y)
 end
 
 ---@param color color
-function graphics.setPixel(x, y, color)
+---@param double boolean?
+function graphics.setPixel(x, y, color, double)
+    if double then
+        return graphics.setPixelLarge(x, y, color)
+    end
     local ax, ay = trig.round(x - cornerx), trig.round(y - cornery)
     if ax < 1 or ay < 1 or ax > tw * graphics.mulx or ay > th * graphics.muly then
         return
     end
     box:set_pixel(ax, ay, color)
+end
+
+---Set 2x2 pixel region
+---@param x integer
+---@param y integer
+---@param color color
+function graphics.setPixelLarge(x, y, color)
+    local ax, ay = trig.round(x - cornerx), trig.round(y - cornery)
+    ax = ax - 1 + (ax % 2)
+    if ax < 1 or ay < 1 or ax + 1 > tw * graphics.mulx or ay + 1 > th * graphics.muly then
+        return
+    end
+    box:set_pixel(ax, ay, color)
+    box:set_pixel(ax + 1, ay, color)
+    box:set_pixel(ax, ay + 1, color)
+    box:set_pixel(ax + 1, ay + 1, color)
 end
 
 ---Draw a line between two points

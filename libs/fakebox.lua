@@ -17,7 +17,9 @@ function fakebox.new(terminal)
     end
 
     function fb:resize(w, h, color)
-        win.setBackgroundColor(color)
+        if color then
+            win.setBackgroundColor(color)
+        end
         win.reposition(1, 1, w, h)
     end
 

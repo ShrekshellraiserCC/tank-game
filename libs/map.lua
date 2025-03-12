@@ -161,7 +161,7 @@ end
 ---@param m LoadedMap
 function map.renderMap(m)
     for _, v in pairs(m.floors) do
-        shapes.drawPolygon(v)
+        shapes.drawPolygon(v, nil, true)
     end
     for _, v in pairs(m.doors) do
         shapes.drawPolygon(v)

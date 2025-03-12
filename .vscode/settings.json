@@ -1,5 +1,8 @@
 {
     "Lua.diagnostics.disable": [
         "inject-field"
+    ],
+    "Lua.workspace.library": [
+        "/home/mason/Documents/Code/ComputerCraft/LuaEnvironment//lua-ls-cc-tweaked/library"
     ]
 }

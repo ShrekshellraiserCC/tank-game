@@ -282,24 +282,26 @@ function shapes.polyOverlap(polyA, polyB, padding)
         (polyA.bounds[2] - padding < polyB.bounds[4] and polyA.bounds[4] + padding > polyB.bounds[2])
 end
 
-local function defaultFrag(poly, x, y, u, w)
+---@type FragmentShader
+local function defaultFrag(poly, x, y, u, w, _, _, _, double)
     local tex = poly.texture
     local tw, th = tex.w, tex.h
     local tx, ty = (u * tw) % tw + 1, (w * th) % th + 1
     tx, ty = math.min(tw, math.max(1, tx)), math.min(th, math.max(1, ty))
     local col = tex.data[math.floor(ty)][math.floor(tx)]
     if col ~= -1 then
-        graphics.setPixel(x, y, col)
+        graphics.setPixel(x, y, col, double)
     end
 end
 
 ---Draw lines between a list of points
 ---@param poly Polygon
 ---@param wireframe boolean?
-function shapes.drawPolygon(poly, wireframe)
+---@param double boolean?
+function shapes.drawPolygon(poly, wireframe, double)
     -- if not polyWithinViewport(poly) then return end
     for _, tri in ipairs(poly.triangles) do
-        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], poly.frag or defaultFrag, wireframe)
+        graphics.renderTriangle(poly, tri[1], tri[2], tri[3], poly.frag or defaultFrag, wireframe, double)
     end
 end
 
@@ -308,11 +310,12 @@ end
 ---@param h number
 ---@return Point[]
 function shapes.getRectangleCorners(w, h)
+    local hw, hh = w / 2, h / 2
     local corners = {
-        { -w / 2, -h / 2 },
-        { w / 2,  -h / 2 },
-        { w / 2,  h / 2 },
-        { -w / 2, h / 2 }
+        { -hw, -hh },
+        { hw,  -hh },
+        { hw,  hh },
+        { -hw, hh }
     }
     return corners
 end

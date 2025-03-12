@@ -355,9 +355,10 @@ local function getGizmoCorners(poly)
 
     local x1r, y1r = divscale(x1, y1)
     local x2r, y2r = divscale(x2, y2)
+    x2r, y2r = x2r + 1, y2r + 1
     local cx, cy = graphics.worldToScreenPos(px, py)
 
-    return math.ceil(x1r - 1), math.ceil(y1r - 1), x2r + 1, y2r + 1, divscale(cx, cy)
+    return math.floor(x1r), math.floor(y1r), math.ceil(x2r), math.ceil(y2r), divscale(cx, cy)
 end
 local horizStr
 do
@@ -522,7 +523,7 @@ local function render()
     activeBox:clear(colors.black)
     if viewFloors then
         for _, v in pairs(wmap.floors) do
-            shapes.drawPolygon(v, viewWireframe)
+            shapes.drawPolygon(v, viewWireframe, true)
         end
     end
     if viewDoors then
@@ -787,6 +788,15 @@ local eventHandlers = {
         end
         wasMouseDragged = false
     end,
+    term_resize = function()
+        local w, h = term.getSize()
+        win.reposition(1, 1, w, h)
+        pixelbox:resize(w, h)
+        bixelbox:resize(w, h)
+        fakebox:resize(w, h)
+        graphics.refreshSize()
+        updated = true
+    end
 }
 
 local function eventLoop()
