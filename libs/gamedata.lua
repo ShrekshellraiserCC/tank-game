@@ -1,43 +1,32 @@
-local gamedata                  = {}
+local gamedata     = {}
 
-local palette                   = require "libs.palette"
-local shapes                    = require "libs.shapes"
-local map                       = require "libs.map"
-local trig                      = require "libs.trig"
-local profile                   = require "libs.debugoverlay"
-local graphics                  = require "libs.graphics"
-local gamesettings              = require "libs.gamesettings"
+local palette      = require "libs.palette"
+local shapes       = require "libs.shapes"
+local map          = require "libs.map"
+local trig         = require "libs.trig"
+local profile      = require "libs.debugoverlay"
+local graphics     = require "libs.graphics"
+local gamesettings = require "libs.gamesettings"
 
 ---@class Team
 ---@field color color
----@field tankTexture Texture
----@field turretTexture Texture
 ---@field accent color
 
 ---@alias TeamID "red"|"blue"
 
-local friction                  = 0.99
+local friction     = 0.99
 
-gamedata.tickTime               = 0.05
-
-local redTankTextureData        = map.readFile("textures/red_tank.tex")
-local redTankTurretTextureData  = map.readFile("textures/red_tank_turret.tex")
-local blueTankTextureData       = map.readFile("textures/blue_tank.tex")
-local blueTankTurretTextureData = map.readFile("textures/blue_tank_turret.tex")
+gamedata.tickTime  = 0.05
 
 ---@type table<TeamID,Team>
-gamedata.teams                  = {
+gamedata.teams     = {
     red = {
         color = palette.colors.red,
         accent = palette.colors.redShade,
-        tankTexture = shapes.parseTexture(redTankTextureData),
-        turretTexture = shapes.parseTexture(redTankTurretTextureData),
     },
     blue = {
         color = palette.colors.blue,
         accent = palette.colors.blueShade,
-        tankTexture = shapes.parseTexture(blueTankTextureData),
-        turretTexture = shapes.parseTexture(blueTankTurretTextureData),
     }
 }
 
@@ -52,7 +41,7 @@ gamedata.teams                  = {
 ---@alias ClassID "base" | "heavy"
 
 ---@type table<ClassID,Class>
-gamedata.classes                = {
+gamedata.classes   = {
     base = {
         weapon = {
             shotCapacity = 3,
@@ -62,13 +51,6 @@ gamedata.classes                = {
             reloadDelay = 800,
             lastReloadTime = 0,
             bulletVelocity = 2,
-            bulletParticleTick = function(player, bullet)
-                if math.random() > 0.3 then
-                    local vel, angle = gamedata.getRay(bullet.vel)
-                    local particleAngle = (angle + 180 + math.random(-20, 20)) % 360
-                    gamedata.newParticle(bullet.pos, gamedata.ray(vel * 0.4, particleAngle), 1000, colors.gray)
-                end
-            end,
             health = 1
         },
         boostStats = {
@@ -94,13 +76,6 @@ gamedata.classes                = {
             reloadDelay = 1000,
             lastReloadTime = 0,
             bulletVelocity = 2,
-            bulletParticleTick = function(player, bullet)
-                if math.random() > 0.3 then
-                    local vel, angle = gamedata.getRay(bullet.vel)
-                    local particleAngle = (angle + 180 + math.random(-20, 20)) % 360
-                    gamedata.newParticle(bullet.pos, gamedata.ray(vel * 0.4, particleAngle), 1000, colors.gray)
-                end
-            end,
             health = 2
         },
         boostStats = {
@@ -116,6 +91,39 @@ gamedata.classes                = {
         size = vector.new(8, 12, 0),
         turretLength = 12,
         turretSize = vector.new(6, 6, 0),
+    },
+    bouncy = {
+        weapon = {
+            shotCapacity = 100,
+            shotsRemaining = 100,
+            lastFireTime = 0,
+            fireDelay = 30,
+            reloadDelay = 1,
+            lastReloadTime = 0,
+            bulletVelocity = 3,
+            bulletParticleTick = function(player, bullet)
+                if math.random() > 0.3 then
+                    local vel, angle = gamedata.getRay(bullet.vel)
+                    local particleAngle = (angle + 180 + math.random(-20, 20)) % 360
+                    gamedata.newParticle(bullet.pos, gamedata.ray(vel * 0.4, particleAngle), 1000, colors.gray)
+                end
+            end,
+            health = 1,
+            bounces = 99
+        },
+        boostStats = {
+            maxVelocity = 1.3,
+            maxAcceleration = 0.1,
+            maxAngleVelocity = 3
+        },
+        baseStats = {
+            maxVelocity = 0.8,
+            maxAcceleration = 0.1,
+            maxAngleVelocity = 5,
+        },
+        size = vector.new(3, 12, 0),
+        turretLength = 12,
+        turretSize = vector.new(6, 6, 0),
     }
 }
 
@@ -128,8 +136,9 @@ gamedata.classes                = {
 ---@field lastReloadTime number
 ---@field reloadDelay number
 ---@field bulletVelocity number
----@field bulletParticleTick fun(player:Player,bullet:Bullet)
+---@field bulletParticleTick fun(player:Player,bullet:Bullet)?
 ---@field health integer
+---@field bounces integer?
 
 ---@class Player
 ---@field pos Vector
@@ -162,14 +171,14 @@ gamedata.classes                = {
 ---@field willRespawnAt number?
 
 ---@type table<integer,Player>
-gamedata.players                = {}
+gamedata.players   = {}
 
 ---@type table<integer,Bullet>
-gamedata.bullets                = {}
+gamedata.bullets   = {}
 
 ---@alias GameMode "SPECTATING"|"PLAYING"|"KILL_CAM"|"MENU"
 ---@type GameMode
-gamedata.mode                   = "SPECTATING"
+gamedata.mode      = "SPECTATING"
 
 ---@class Particle
 ---@field pos Vector
@@ -179,16 +188,16 @@ gamedata.mode                   = "SPECTATING"
 ---@field creation number
 
 ---@type table<number,Particle>
-gamedata.particles              = {}
+gamedata.particles = {}
 
-local tw, th                    = term.getSize()
+local tw, th       = term.getSize()
 
-local midpx, midpy              = tw, th / 2 * 3
-local aiming                    = false
-local aimpos                    = vector.new(0, 0, 0)
-local view                      = vector.new(midpx, midpy, 0)
-local targetView                = vector.new(midpx, midpy, 0)
-local viewVelocity              = 5
+local midpx, midpy = tw, th / 2 * 3
+local aiming       = false
+local aimpos       = vector.new(0, 0, 0)
+local view         = vector.new(midpx, midpy, 0)
+local targetView   = vector.new(midpx, midpy, 0)
+local viewVelocity = 5
 
 ---@param player Player
 function gamedata.createPlayerPolys(player)
@@ -391,7 +400,7 @@ function gamedata.newBullet(id, owner, pos, velocity)
     local bullet = {
         pos = pos,
         vel = velocity,
-        remainingBounces = 1,
+        remainingBounces = player.weapon.bounces or 1,
         health = player.weapon.health,
         ticksToLive = 20 * 20,
         created = os.epoch("utc"),
@@ -421,7 +430,9 @@ function gamedata.tickBulletClient(i)
     local bullet = gamedata.bullets[i]
 
     local player = gamedata.players[bullet.owner]
-    player.weapon.bulletParticleTick(player, bullet)
+    if player.weapon.bulletParticleTick then
+        player.weapon.bulletParticleTick(player, bullet)
+    end
 end
 
 ---@param player Player
@@ -436,7 +447,6 @@ end
 function gamedata.tickBulletServer(i)
     local network = require "libs.gamenetwork"
     local bullet = gamedata.bullets[i]
-    bullet.vel = bullet.vel * friction
     if bullet.vel:length() < 0.4 or bullet.health <= 0 then
         network.queueGameEvent("bullet_destroy", { id = i })
         gamedata.bullets[i] = nil
@@ -545,6 +555,14 @@ local function ray(magnitude, angle)
 end
 gamedata.ray = ray
 
+local function defaultShootParticles(pos, angle, pvel)
+    for i = 1, 30 do
+        local deviation = math.random(-30, 30)
+        local vel = 0.6 + math.random()
+        gamedata.newParticle(pos, pvel + gamedata.ray(vel, angle + deviation), 2000, colors.gray)
+    end
+end
+
 ---@param bid integer
 ---@param player Player
 function gamedata.fire(bid, player, pos, vel)
@@ -556,6 +574,7 @@ function gamedata.fire(bid, player, pos, vel)
     pos = pos or player.pos + ray(player.turretLength, player.turretAngle)
     vel = vel or ray(weapon.bulletVelocity, player.turretAngle) + ray(player.velocity, player.angle + 90)
     gamedata.newBullet(bid, player.id, pos, vel)
+    defaultShootParticles(pos, player.turretAngle, ray(player.velocity, player.angle + 90))
 end
 
 function gamedata.explosion(pos)
