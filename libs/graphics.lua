@@ -27,8 +27,13 @@ function graphics.setViewCenter(x, y)
     cornerx, cornery = cx - mx, cy - my
 end
 
-function graphics.refreshSize()
-    tw, th = term.getSize()
+function graphics.refreshSize(w, h)
+    if w then
+        tw, th = w, h
+    else
+        tw, th = term.getSize()
+    end
+    mx, my = tw, th / 2 * graphics.muly
 end
 
 function graphics.setViewCorner(x, y)

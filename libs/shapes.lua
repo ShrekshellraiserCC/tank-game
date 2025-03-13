@@ -321,7 +321,10 @@ function shapes.getRectangleCorners(w, h)
 end
 
 function shapes.parseTexture(s)
-    local data = textutils.unserialise(s)
+    local data = s
+    if type(s) == "string" then
+        data = textutils.unserialise(s)
+    end
     assert(type(data) == "table", "Invalid texture")
     local stage1
     if type(data[1]) == "table" then
