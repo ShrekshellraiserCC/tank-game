@@ -329,6 +329,34 @@ local function tickPlayerPolygons(player)
     shapes.calculatePolygonTriangles(player.turretPoly)
 end
 
+function gamedata.preTickCapturePoints()
+    for i, v in ipairs(gamedata.map.caps or {}) do
+        gamedata.gameState.caps[i].contesting = {}
+    end
+end
+
+function gamedata.postTickCapturePoints()
+    for i, v in ipairs(gamedata.gameState.caps or {}) do
+        local equal = false
+        local maxContesting = -1
+        local maxColor = 0
+        for color, contesting in pairs(v.contesting) do
+            if contesting > maxContesting then
+                maxContesting = contesting
+                maxColor = color
+            elseif contesting == maxContesting then
+                equal = true
+                break
+            end
+        end
+        if not equal then
+            v.owner = maxColor
+            local network = require "libs.gamenetwork"
+            network.queueGameEvent("cap_capture", { id = i, owner = v.owner })
+        end
+    end
+end
+
 ---@param player Player
 function gamedata.tickPlayer(player)
     if player.alive then
@@ -378,6 +406,15 @@ function gamedata.tickPlayer(player)
 
         player.pos.x = player.pos.x + translation.x
         player.pos.y = player.pos.y + translation.y
+
+        for i, v in ipairs(gamedata.map.caps or {}) do
+            local x1, y1, x2, y2 = table.unpack(v.region)
+            local px, py = player.pos.x, player.pos.y
+            if player.alive and px >= x1 and px <= x2 and py >= y1 and py <= y2 then
+                local capinfo = gamedata.gameState.caps[i]
+                capinfo.contesting[player.color] = (capinfo.contesting[player.color] or 0) + 1
+            end
+        end
 
         tickPlayerWeapon(player)
     else
@@ -534,8 +571,11 @@ function gamedata.tickParticle(i)
 end
 
 gamedata.mapData = map.readFile("maps/default.json")
+---@class GameState
+---@field caps {owner:color,contesting:table<color,integer>}[]?
+gamedata.gameState = {}
 ---@type LoadedMap
-gamedata.map = map.loadMap(gamedata.mapData)
+gamedata.map, gamedata.gameState = map.loadMap(gamedata.mapData)
 
 function gamedata.reset()
     gamedata.players = {}
@@ -829,7 +869,7 @@ local function render()
     win.setVisible(false)
     box:clear(colors.black)
     if gamedata.mode ~= "MENU" then
-        map.renderMap(gamedata.map)
+        map.renderMap(gamedata.map, gamedata.gameState)
         for i, v in pairs(gamedata.particles) do
             graphics.setPixel(v.pos.x, v.pos.y, v.color)
         end
@@ -1128,9 +1168,11 @@ end
 
 function gamedata.startServerTicking()
     gamedata.createCallback(gamedata.tickTime, function()
+        gamedata.preTickCapturePoints()
         for _, player in pairs(gamedata.players) do
             gamedata.tickPlayer(player)
         end
+        gamedata.postTickCapturePoints()
         tickBulletOnBulletCollisions()
         for i in pairs(gamedata.bullets) do
             gamedata.tickBulletServer(i)

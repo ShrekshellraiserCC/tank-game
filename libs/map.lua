@@ -2,6 +2,7 @@ local map = {}
 
 local shapes = require "libs.shapes"
 local palette = require "libs.palette"
+local graphics = require "libs.graphics"
 
 ---@class SavedMap
 ---@field name string
@@ -11,6 +12,7 @@ local palette = require "libs.palette"
 ---@field floors table?
 ---@field textures table?
 ---@field spawns table
+---@field caps table?
 
 ---@class DoorPolygon : Polygon
 ---@field team TeamID
@@ -21,6 +23,7 @@ local palette = require "libs.palette"
 ---@field floors Polygon[]
 ---@field textures table<string,Texture>
 ---@field spawns {red: integer[][],blue: integer[][]}
+---@field caps {region:integer[],owner:color}[]? x1, y1, x2, y2
 
 ---@param v any
 ---@param s string
@@ -95,6 +98,7 @@ local function parsePolygon(loaded, part, i, desc)
 end
 
 ---@return LoadedMap
+---@return GameState
 function map.loadMap(s)
     local json = s
     if type(json) == "string" then
@@ -117,6 +121,8 @@ function map.loadMap(s)
         textures = {},
         spawns = {}
     }
+    ---@type GameState
+    local gameState = {}
     for k, v in pairs(json.textures) do
         if fs.exists(k) then
             local ok, texture = pcall(function() return shapes.loadTexture(v) end)
@@ -139,11 +145,19 @@ function map.loadMap(s)
     for i, v in ipairs(json.floors or {}) do
         loadedMap.floors[i] = parsePolygon(loadedMap, "floor", i, v)
     end
+    loadedMap.caps = json.caps
+    if loadedMap.caps then
+        gameState.caps = {}
+        for i, v in ipairs(loadedMap.caps) do
+            gameState.caps[i] = {}
+            gameState.caps[i].owner = v.owner
+        end
+    end
     loadedMap.spawns = json.spawns
     nassert(loadedMap.spawns.red and #loadedMap.spawns.red > 0, "Map is missing red spawns!")
     nassert(loadedMap.spawns.blue and #loadedMap.spawns.blue > 0, "Map is missing blue spawns!")
 
-    return loadedMap
+    return loadedMap, gameState
 end
 
 function map.readFile(fn)
@@ -159,9 +173,14 @@ function map.loadMapFile(fn)
 end
 
 ---@param m LoadedMap
-function map.renderMap(m)
+---@param state GameState
+function map.renderMap(m, state)
     for _, v in pairs(m.floors) do
         shapes.drawPolygon(v, nil, true)
+    end
+    for i, v in pairs(m.caps or {}) do
+        local region = v.region
+        graphics.drawRectangle(region[1], region[2], region[3], region[4], state.caps[i].owner)
     end
     for _, v in pairs(m.doors) do
         shapes.drawPolygon(v)

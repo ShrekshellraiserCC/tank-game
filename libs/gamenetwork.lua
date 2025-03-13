@@ -144,6 +144,9 @@ local clientGameEventHandlers = {
                 -- bullet.pos = vectorize(v.pos)
             end
         end
+    end,
+    cap_capture = function(d)
+        gamedata.gameState.caps[d.id].owner = d.owner
     end
 }
 
